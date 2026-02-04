@@ -4,6 +4,7 @@ import { VitePWA } from "vite-plugin-pwa";
 
 export default defineConfig({
   root: __dirname,
+  base: process.env.NODE_ENV === "production" ? "/glide/" : "/",
   server: {
     host: true,
   },
