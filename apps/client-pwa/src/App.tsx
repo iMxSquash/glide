@@ -23,6 +23,8 @@ export default function App() {
   const codeReaderRef = useRef<BrowserQRCodeReader | null>(null);
   const pointersRef = useRef<Map<number, PointerState>>(new Map());
   const lastPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const pointerDownTimeRef = useRef<number>(0);
+  const hasMovedRef = useRef<boolean>(false);
 
   useEffect(() => {
     const handleVolumeKeys = (e: KeyboardEvent) => {
@@ -147,8 +149,8 @@ export default function App() {
         x: e.nativeEvent.clientX,
         y: e.nativeEvent.clientY,
       };
-    } else if (pointersRef.current.size === 2 && socketRef.current) {
-      socketRef.current.emit("rightClick");
+      pointerDownTimeRef.current = Date.now();
+      hasMovedRef.current = false;
     }
   };
 
@@ -159,7 +161,8 @@ export default function App() {
     const deltaX = (e.nativeEvent.clientX - lastPosRef.current.x) * 2;
     const deltaY = (e.nativeEvent.clientY - lastPosRef.current.y) * 2;
 
-    if (Math.abs(deltaX) > 0 || Math.abs(deltaY) > 0) {
+    if (Math.abs(deltaX) > 2 || Math.abs(deltaY) > 2) {
+      hasMovedRef.current = true;
       socketRef.current.emit("mouseDelta", { x: deltaX, y: deltaY });
     }
 
@@ -169,13 +172,19 @@ export default function App() {
   const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
     const wasSingleTouch = pointersRef.current.size === 1;
+    const wasTwoTouches = pointersRef.current.size === 2;
+    const tapDuration = Date.now() - pointerDownTimeRef.current;
 
     pointersRef.current.delete(e.pointerId);
     trackpadRef.current?.releasePointerCapture(e.pointerId);
 
-    if (wasSingleTouch && socketRef.current) {
-      const timeSinceLast = Date.now();
-      if (timeSinceLast < 200) {
+    if (socketRef.current) {
+      // Tap 2 doigts = right click
+      if (wasTwoTouches && tapDuration < 300 && !hasMovedRef.current) {
+        socketRef.current.emit("rightClick");
+      }
+      // Tap 1 doigt = left click
+      else if (wasSingleTouch && tapDuration < 300 && !hasMovedRef.current) {
         socketRef.current.emit("leftClick");
       }
     }
