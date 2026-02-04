@@ -110,6 +110,12 @@ function createTray(): void {
       },
       { type: "separator" },
       {
+        label: "Show PIN",
+        click: () => {
+          showPINWindow();
+        },
+      },
+      {
         label: isServerRunning ? "Pause" : "Resume",
         click: () => {
           isServerRunning = !isServerRunning;
@@ -133,58 +139,74 @@ function createTray(): void {
  * Show PIN in a window
  */
 function showPINWindow(): void {
+  if (mainWindow) {
+    mainWindow.show();
+    mainWindow.focus();
+    return;
+  }
+
   mainWindow = new BrowserWindow({
     width: 400,
     height: 200,
     frame: false,
     resizable: false,
     alwaysOnTop: true,
+    backgroundColor: "#0E0F12",
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
     },
   });
 
-  mainWindow.loadURL(`data:text/html;charset=utf-8,
-    <html>
-      <head>
-        <style>
-          body { 
-            margin: 0; 
-            background: #0E0F12; 
-            color: #F2F2F3;
-            font-family: Inter, sans-serif;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-          }
-          .container {
-            text-align: center;
-          }
-          h1 {
-            font-size: 48px;
-            margin: 0;
-            color: #6EE7B7;
-          }
-          p {
-            margin-top: 10px;
-            color: #9A9DA3;
-          }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <p>Your PIN</p>
-          <h1>${currentPIN}</h1>
-        </div>
-      </body>
-    </html>
-  `);
+  const htmlContent = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0E0F12;
+      color: #F2F2F3;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      width: 100vw;
+    }
+    .container { text-align: center; }
+    h1 {
+      font-size: 64px;
+      color: #6EE7B7;
+      font-weight: bold;
+      letter-spacing: 8px;
+      margin: 10px 0;
+    }
+    p {
+      color: #9A9DA3;
+      font-size: 18px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <p>Your PIN</p>
+    <h1>${currentPIN}</h1>
+  </div>
+</body>
+</html>`;
 
-  setTimeout(() => {
-    mainWindow?.close();
-  }, 5000);
+  mainWindow.loadURL(
+    `data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`,
+  );
+
+  mainWindow.on("blur", () => {
+    mainWindow?.hide();
+  });
+
+  mainWindow.on("closed", () => {
+    mainWindow = null;
+  });
 }
 
 app.whenReady().then(() => {

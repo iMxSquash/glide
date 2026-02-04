@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body {
+            margin: 0;
+            background: #0E0F12;
+            color: #F2F2F3;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+
+        .container {
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 64px;
+            margin: 10px 0;
+            color: #6EE7B7;
+            font-weight: bold;
+            letter-spacing: 8px;
+        }
+
+        p {
+            margin: 0;
+            color: #9A9DA3;
+            font-size: 18px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <p>Your PIN</p>
+        <h1 id="pin"></h1>
+    </div>
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        document.getElementById('pin').textContent = urlParams.get('pin') || '000000';
+    </script>
+</body>
+
+</html>
