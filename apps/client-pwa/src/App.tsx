@@ -15,6 +15,7 @@ export default function App() {
   const [isConnecting, setIsConnecting] = useState(false);
   const [showPinModal, setShowPinModal] = useState(true);
   const [isScanning, setIsScanning] = useState(false);
+  const [showManualIP, setShowManualIP] = useState(false);
   const [volume, setVolume] = useState(50);
   const socketRef = useRef<Socket | null>(null);
   const trackpadRef = useRef<HTMLDivElement>(null);
@@ -41,72 +42,50 @@ export default function App() {
   const connectWithPin = async (ip: string, pinCode: string) => {
     setIsConnecting(true);
 
-    const socket = io(`https://${ip}:3000`, {
+    // Nettoie l'IP (enlève le port si présent)
+    const cleanIP = ip.replace(/:3000$/, "").trim();
+    console.log(
+      `Tentative connexion : http://${cleanIP}:3000 avec PIN ${pinCode}`,
+    );
+
+    const socket = io(`http://${cleanIP}:3000`, {
       auth: { pin: pinCode },
       transports: ["websocket"],
-      rejectUnauthorized: false,
+      timeout: 10000,
+      reconnectionAttempts: 3,
     });
 
     socket.on("connect", () => {
+      console.log("✅ Connexion réussie !");
       setIsConnected(true);
       setIsConnecting(false);
       setShowPinModal(false);
-      setServerIP(ip);
+      setServerIP(cleanIP);
       socketRef.current = socket;
     });
 
-    socket.on("connect_error", () => {
+    socket.on("connect_error", (error) => {
+      console.error("❌ Erreur connexion:", error);
       setIsConnecting(false);
-      alert("Connection failed. Check PIN and network.");
+      alert(
+        `Connection failed: ${error.message}\n\nVérifier:\n1. Serveur lancé sur ${cleanIP}\n2. Windows Firewall autorise port 3000\n3. Téléphone et PC sur même WiFi`,
+      );
     });
   };
 
   const findServerAndConnect = async () => {
     if (pin.length !== 6) return;
 
-    setIsConnecting(true);
-    const localIP = window.location.hostname;
-    const baseIP = localIP.split(".").slice(0, 3).join(".") + ".";
-
-    for (let i = 1; i <= 254; i++) {
-      const testIP = baseIP + i;
-      try {
-        const socket = io(`https://${testIP}:3000`, {
-          auth: { pin },
-          transports: ["websocket"],
-          rejectUnauthorized: false,
-          timeout: 500,
-        });
-
-        const connected = await new Promise<boolean>((resolve) => {
-          socket.on("connect", () => {
-            setIsConnected(true);
-            setIsConnecting(false);
-            setShowPinModal(false);
-            setServerIP(testIP);
-            socketRef.current = socket;
-            resolve(true);
-          });
-
-          socket.on("connect_error", () => {
-            socket.close();
-            resolve(false);
-          });
-
-          setTimeout(() => {
-            socket.close();
-            resolve(false);
-          }, 500);
-        });
-
-        if (connected) return;
-      } catch (err) {
-        continue;
-      }
+    // Si IP manuelle fournie, l'utiliser directement
+    if (serverIP) {
+      connectWithPin(serverIP, pin);
+      return;
     }
 
+    // Sinon demander à l'utilisateur d'entrer l'IP
     setIsConnecting(false);
-    alert("Server not found. Check PIN and network.");
+    alert("Please enter the server IP address shown on your PC.");
+    setShowManualIP(true);
   };
 
   const startQRScan = () => {
@@ -228,6 +207,17 @@ export default function App() {
             <>
               <input
                 type="text"
+                placeholder="192.168.0.50 (IP only)"
+                value={serverIP}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  setServerIP(e.target.value)
+                }
+                className="w-full bg-background text-primary text-center p-3 rounded-xl mb-3 focus:outline-none focus:ring-2 focus:ring-accent text-sm"
+                disabled={isConnecting}
+              />
+
+              <input
+                type="text"
                 inputMode="numeric"
                 maxLength={6}
                 value={pin}
@@ -236,13 +226,12 @@ export default function App() {
                 }
                 className="w-full bg-background text-primary text-center text-3xl tracking-widest p-4 rounded-xl mb-4 focus:outline-none focus:ring-2 focus:ring-accent"
                 placeholder="000000"
-                autoFocus
                 disabled={isConnecting}
               />
 
               <button
                 onClick={findServerAndConnect}
-                disabled={pin.length !== 6 || isConnecting}
+                disabled={pin.length !== 6 || !serverIP || isConnecting}
                 className="w-full bg-accent text-background font-medium py-3 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mb-3"
               >
                 {isConnecting ? (

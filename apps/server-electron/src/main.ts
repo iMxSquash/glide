@@ -58,13 +58,13 @@ function generateSelfSignedCert(): { key: string; cert: string } {
 }
 
 /**
- * Start Socket.io WSS server
+ * Start Socket.io server (HTTP for development)
  */
 function startServer(): void {
-  const cert = generateSelfSignedCert();
-  const httpsServer = https.createServer(cert);
+  const http = require("http");
+  const httpServer = http.createServer();
 
-  io = new Server(httpsServer, {
+  io = new Server(httpServer, {
     cors: { origin: "*" },
     transports: ["websocket"],
   });
@@ -107,7 +107,7 @@ function startServer(): void {
     });
   });
 
-  httpsServer.listen(PORT, "0.0.0.0", () => {
+  httpServer.listen(PORT, "0.0.0.0", () => {
     console.log(`Glide server running on port ${PORT}`);
     isServerRunning = true;
   });
