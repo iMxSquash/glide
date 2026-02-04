@@ -10,6 +10,7 @@ interface PointerState {
 export default function App() {
   const [pin, setPin] = useState("");
   const [isConnected, setIsConnected] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
   const [showPinModal, setShowPinModal] = useState(true);
   const [volume, setVolume] = useState(50);
   const socketRef = useRef<Socket | null>(null);
@@ -35,6 +36,8 @@ export default function App() {
   const connectToServer = () => {
     if (pin.length !== 6) return;
 
+    setIsConnecting(true);
+
     const socket = io("wss://192.168.1.100:3000", {
       auth: { pin },
       transports: ["websocket"],
@@ -42,11 +45,13 @@ export default function App() {
 
     socket.on("connect", () => {
       setIsConnected(true);
+      setIsConnecting(false);
       setShowPinModal(false);
       socketRef.current = socket;
     });
 
     socket.on("connect_error", () => {
+      setIsConnecting(false);
       alert("Invalid PIN or connection failed");
     });
   };
@@ -122,10 +127,32 @@ export default function App() {
           />
           <button
             onClick={connectToServer}
-            disabled={pin.length !== 6}
-            className="w-full bg-accent text-background font-medium py-3 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={pin.length !== 6 || isConnecting}
+            className="w-full bg-accent text-background font-medium py-3 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
-            Connect
+            {isConnecting ? (
+              <>
+                <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                    fill="none"
+                  />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  />
+                </svg>
+                Connecting...
+              </>
+            ) : (
+              "Connect"
+            )}
           </button>
         </div>
       </div>
