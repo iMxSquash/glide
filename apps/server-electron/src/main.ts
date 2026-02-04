@@ -58,13 +58,19 @@ function generateSelfSignedCert(): { key: string; cert: string } {
 }
 
 /**
- * Start Socket.io server (HTTP for development)
+ * Start Socket.io server (HTTPS with self-signed cert)
  */
 function startServer(): void {
-  const http = require("http");
-  const httpServer = http.createServer();
+  const selfsigned = require("selfsigned");
+  const attrs = [{ name: "commonName", value: "glide-server" }];
+  const pems = selfsigned.generate(attrs, { days: 365 });
 
-  io = new Server(httpServer, {
+  const httpsServer = https.createServer({
+    key: pems.private,
+    cert: pems.cert,
+  });
+
+  io = new Server(httpsServer, {
     cors: { origin: "*" },
     transports: ["websocket"],
   });
@@ -107,8 +113,8 @@ function startServer(): void {
     });
   });
 
-  httpServer.listen(PORT, "0.0.0.0", () => {
-    console.log(`Glide server running on port ${PORT}`);
+  httpsServer.listen(PORT, "0.0.0.0", () => {
+    console.log(`Glide server running on https://0.0.0.0:${PORT}`);
     isServerRunning = true;
   });
 }

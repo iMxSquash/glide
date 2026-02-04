@@ -50,11 +50,12 @@ export default function App() {
       `Tentative connexion : http://${cleanIP}:3000 avec PIN ${pinCode}`,
     );
 
-    const socket = io(`http://${cleanIP}:3000`, {
+    const socket = io(`https://${cleanIP}:3000`, {
       auth: { pin: pinCode },
       transports: ["websocket"],
       timeout: 10000,
       reconnectionAttempts: 3,
+      rejectUnauthorized: false,
     });
 
     socket.on("connect", () => {
