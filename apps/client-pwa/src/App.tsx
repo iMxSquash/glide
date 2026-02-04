@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { io, Socket } from "socket.io-client";
+import { BrowserQRCodeReader } from "@zxing/library";
 
 interface PointerState {
   id: number;
@@ -9,12 +10,16 @@ interface PointerState {
 
 export default function App() {
   const [pin, setPin] = useState("");
+  const [serverIP, setServerIP] = useState("");
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [showPinModal, setShowPinModal] = useState(true);
+  const [isScanning, setIsScanning] = useState(false);
   const [volume, setVolume] = useState(50);
   const socketRef = useRef<Socket | null>(null);
   const trackpadRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const codeReaderRef = useRef<BrowserQRCodeReader | null>(null);
   const pointersRef = useRef<Map<number, PointerState>>(new Map());
   const lastPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
@@ -33,28 +38,117 @@ export default function App() {
     return () => window.removeEventListener("keydown", handleVolumeKeys);
   }, []);
 
-  const connectToServer = () => {
-    if (pin.length !== 6) return;
-
+  const connectWithPin = async (ip: string, pinCode: string) => {
     setIsConnecting(true);
 
-    const socket = io("wss://192.168.1.100:3000", {
-      auth: { pin },
+    const socket = io(`https://${ip}:3000`, {
+      auth: { pin: pinCode },
       transports: ["websocket"],
+      rejectUnauthorized: false,
     });
 
     socket.on("connect", () => {
       setIsConnected(true);
       setIsConnecting(false);
       setShowPinModal(false);
+      setServerIP(ip);
       socketRef.current = socket;
     });
 
     socket.on("connect_error", () => {
       setIsConnecting(false);
-      alert("Invalid PIN or connection failed");
+      alert("Connection failed. Check PIN and network.");
     });
   };
+
+  const findServerAndConnect = async () => {
+    if (pin.length !== 6) return;
+
+    setIsConnecting(true);
+    const localIP = window.location.hostname;
+    const baseIP = localIP.split(".").slice(0, 3).join(".") + ".";
+
+    for (let i = 1; i <= 254; i++) {
+      const testIP = baseIP + i;
+      try {
+        const socket = io(`https://${testIP}:3000`, {
+          auth: { pin },
+          transports: ["websocket"],
+          rejectUnauthorized: false,
+          timeout: 500,
+        });
+
+        const connected = await new Promise<boolean>((resolve) => {
+          socket.on("connect", () => {
+            setIsConnected(true);
+            setIsConnecting(false);
+            setShowPinModal(false);
+            setServerIP(testIP);
+            socketRef.current = socket;
+            resolve(true);
+          });
+
+          socket.on("connect_error", () => {
+            socket.close();
+            resolve(false);
+          });
+
+          setTimeout(() => {
+            socket.close();
+            resolve(false);
+          }, 500);
+        });
+
+        if (connected) return;
+      } catch (err) {
+        continue;
+      }
+    }
+
+    setIsConnecting(false);
+    alert("Server not found. Check PIN and network.");
+  };
+
+  const startQRScan = () => {
+    setIsScanning(true);
+  };
+
+  const stopQRScan = () => {
+    if (codeReaderRef.current) {
+      codeReaderRef.current.reset();
+      codeReaderRef.current = null;
+    }
+    setIsScanning(false);
+  };
+
+  useEffect(() => {
+    if (isScanning && videoRef.current) {
+      const scan = async () => {
+        try {
+          codeReaderRef.current = new BrowserQRCodeReader();
+          await codeReaderRef.current.decodeFromVideoDevice(
+            null,
+            videoRef.current!,
+            (result) => {
+              if (result) {
+                try {
+                  const data = JSON.parse(result.getText());
+                  stopQRScan();
+                  connectWithPin(data.ip, data.pin);
+                } catch (e) {
+                  console.error("Invalid QR code", e);
+                }
+              }
+            },
+          );
+        } catch (err) {
+          alert("Camera access denied");
+          setIsScanning(false);
+        }
+      };
+      scan();
+    }
+  }, [isScanning]);
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -113,47 +207,91 @@ export default function App() {
       <div className="min-h-screen bg-background flex items-center justify-center p-6">
         <div className="bg-surface rounded-2xl p-8 w-full max-w-sm">
           <h1 className="text-3xl font-bold text-accent mb-2">Glide</h1>
-          <p className="text-secondary mb-6">Enter your PC PIN</p>
-          <input
-            type="text"
-            inputMode="numeric"
-            maxLength={6}
-            value={pin}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-              setPin(e.target.value.replace(/\D/g, ""))
-            }
-            className="w-full bg-background text-primary text-center text-2xl tracking-widest p-4 rounded-xl mb-4 focus:outline-none focus:ring-2 focus:ring-accent"
-            placeholder="000000"
-          />
-          <button
-            onClick={connectToServer}
-            disabled={pin.length !== 6 || isConnecting}
-            className="w-full bg-accent text-background font-medium py-3 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-          >
-            {isConnecting ? (
-              <>
-                <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                    fill="none"
-                  />
+          <p className="text-secondary mb-6">Enter PIN from your PC</p>
+
+          {isScanning ? (
+            <>
+              <video
+                ref={videoRef}
+                className="w-full h-64 bg-background rounded-xl mb-4"
+                autoPlay
+                playsInline
+              />
+              <button
+                onClick={stopQRScan}
+                className="w-full bg-secondary text-background font-medium py-3 rounded-xl mb-3"
+              >
+                Cancel
+              </button>
+            </>
+          ) : (
+            <>
+              <input
+                type="text"
+                inputMode="numeric"
+                maxLength={6}
+                value={pin}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  setPin(e.target.value.replace(/\D/g, ""))
+                }
+                className="w-full bg-background text-primary text-center text-3xl tracking-widest p-4 rounded-xl mb-4 focus:outline-none focus:ring-2 focus:ring-accent"
+                placeholder="000000"
+                autoFocus
+                disabled={isConnecting}
+              />
+
+              <button
+                onClick={findServerAndConnect}
+                disabled={pin.length !== 6 || isConnecting}
+                className="w-full bg-accent text-background font-medium py-3 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mb-3"
+              >
+                {isConnecting ? (
+                  <>
+                    <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                        fill="none"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      />
+                    </svg>
+                    Connecting...
+                  </>
+                ) : (
+                  "Connect"
+                )}
+              </button>
+
+              <button
+                onClick={startQRScan}
+                disabled={isConnecting}
+                className="w-full bg-surface-light text-primary font-medium py-3 rounded-xl disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
                   <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"
                   />
                 </svg>
-                Connecting...
-              </>
-            ) : (
-              "Connect"
-            )}
-          </button>
+                Scan QR Code
+              </button>
+            </>
+          )}
         </div>
       </div>
     );

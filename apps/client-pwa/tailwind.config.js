@@ -1,8 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 export default {
     content: [
-        './apps/client-pwa/index.html',
-        './apps/client-pwa/src/**/*.{js,ts,jsx,tsx}',
         './index.html',
         './src/**/*.{js,ts,jsx,tsx}'
     ],
@@ -12,11 +10,13 @@ export default {
             colors: {
                 background: '#0E0F12',
                 surface: '#16181D',
+                'surface-light': '#1C1E24',
                 primary: '#F2F2F3',
                 secondary: '#9A9DA3',
                 disabled: '#6B6E75',
                 accent: '#6EE7B7',
-                'accent-secondary': '#A5B4FC'
+                'accent-secondary': '#A5B4FC',
+                error: '#EF4444'
             },
             fontFamily: {
                 sans: ['Inter', 'sans-serif'],

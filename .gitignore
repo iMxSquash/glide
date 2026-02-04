@@ -7,3 +7,5 @@ dist
 out
 build
 *.exe
+certs
+tmp

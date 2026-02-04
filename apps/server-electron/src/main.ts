@@ -3,6 +3,8 @@ import { Server } from "socket.io";
 import * as https from "https";
 import * as fs from "fs";
 import * as path from "path";
+import * as os from "os";
+import * as QRCode from "qrcode";
 import { mouse, keyboard, Key } from "@nut-tree-fork/nut-js";
 
 const PORT = 3000;
@@ -10,7 +12,23 @@ let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let io: Server | null = null;
 let currentPIN: string = "";
+let localIP: string = "";
 let isServerRunning = false;
+
+/**
+ * @returns {string} Local IP address
+ */
+function getLocalIP(): string {
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name]!) {
+      if (iface.family === "IPv4" && !iface.internal) {
+        return iface.address;
+      }
+    }
+  }
+  return "localhost";
+}
 
 /**
  * @returns {string} Random 6-digit PIN
@@ -138,7 +156,7 @@ function createTray(): void {
 /**
  * Show PIN in a window
  */
-function showPINWindow(): void {
+async function showPINWindow(): Promise<void> {
   if (mainWindow) {
     mainWindow.show();
     mainWindow.focus();
@@ -147,7 +165,7 @@ function showPINWindow(): void {
 
   mainWindow = new BrowserWindow({
     width: 400,
-    height: 200,
+    height: 550,
     frame: false,
     resizable: false,
     alwaysOnTop: true,
@@ -156,6 +174,12 @@ function showPINWindow(): void {
       nodeIntegration: false,
       contextIsolation: true,
     },
+  });
+
+  const qrData = JSON.stringify({ ip: localIP, pin: currentPIN });
+  const qrCodeDataURL = await QRCode.toDataURL(qrData, {
+    width: 250,
+    color: { dark: "#6EE7B7", light: "#0E0F12" },
   });
 
   const htmlContent = `<!DOCTYPE html>
@@ -173,26 +197,80 @@ function showPINWindow(): void {
       justify-content: center;
       height: 100vh;
       width: 100vw;
+      padding: 30px;
     }
-    .container { text-align: center; }
+    .container { text-align: center; width: 100%; }
     h1 {
-      font-size: 64px;
       color: #6EE7B7;
-      font-weight: bold;
-      letter-spacing: 8px;
-      margin: 10px 0;
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 20px;
     }
-    p {
+    .pin {
+      font-size: 56px;
+      font-weight: 700;
+      letter-spacing: 8px;
+      color: #F2F2F3;
+      margin: 20px 0;
+    }
+    .info {
       color: #9A9DA3;
-      font-size: 18px;
+      font-size: 14px;
+      margin-top: 15px;
+      margin-bottom: 20px;
+    }
+    button {
+      background: #16181D;
+      color: #F2F2F3;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 14px;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+    button:hover { background: #1C1E24; }
+    #qrContainer {
+      margin-top: 10px;
+      display: none;
+    }
+    #qrContainer.show {
+      display: block;
+    }
+    img { 
+      width: 250px; 
+      height: 250px;
+      margin: 10px auto;
+      border-radius: 12px;
     }
   </style>
 </head>
 <body>
   <div class="container">
-    <p>Your PIN</p>
-    <h1>${currentPIN}</h1>
+    <h1>Glide Server</h1>
+    <div class="pin">${currentPIN}</div>
+    <p class="info">${localIP}:3000</p>
+    <button id="toggleBtn">Show QR Code</button>
+    <div id="qrContainer">
+      <img src="${qrCodeDataURL}" alt="QR Code" />
+    </div>
   </div>
+  <script>
+    const btn = document.getElementById('toggleBtn');
+    const qr = document.getElementById('qrContainer');
+    let isShowing = false;
+    
+    btn.addEventListener('click', () => {
+      isShowing = !isShowing;
+      if (isShowing) {
+        qr.classList.add('show');
+        btn.textContent = 'Hide QR Code';
+      } else {
+        qr.classList.remove('show');
+        btn.textContent = 'Show QR Code';
+      }
+    });
+  </script>
 </body>
 </html>`;
 
@@ -210,6 +288,7 @@ function showPINWindow(): void {
 }
 
 app.whenReady().then(() => {
+  localIP = getLocalIP();
   currentPIN = generatePIN();
   startServer();
   createTray();
