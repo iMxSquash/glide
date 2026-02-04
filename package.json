@@ -1,0 +1,26 @@
+{
+    "name": "glide",
+    "version": "1.0.0",
+    "license": "MIT",
+    "private": true,
+    "type": "module",
+    "workspaces": [
+        "apps/*",
+        "libs/*"
+    ],
+    "scripts": {
+        "dev:server": "nx serve server-electron",
+        "dev:client": "nx serve client-pwa",
+        "build:server": "nx build server-electron",
+        "build:client": "nx build client-pwa",
+        "build:all": "nx run-many --target=build --all",
+        "dist:win": "cd apps/server-electron && npm run dist"
+    },
+    "devDependencies": {
+        "@nx/react": "^20.3.0",
+        "@nx/vite": "^20.3.0",
+        "@nx/workspace": "^20.3.0",
+        "nx": "^20.3.0",
+        "typescript": "^5.8.3"
+    }
+}

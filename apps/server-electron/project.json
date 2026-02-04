@@ -1,0 +1,29 @@
+{
+    "name": "server-electron",
+    "$schema": "../../node_modules/nx/schemas/project-schema.json",
+    "sourceRoot": "apps/server-electron/src",
+    "projectType": "application",
+    "targets": {
+        "build": {
+            "executor": "@nx/js:tsc",
+            "outputs": [
+                "{options.outputPath}"
+            ],
+            "options": {
+                "outputPath": "apps/server-electron/dist",
+                "main": "apps/server-electron/src/main.ts",
+                "tsConfig": "apps/server-electron/tsconfig.json"
+            }
+        },
+        "serve": {
+            "executor": "nx:run-commands",
+            "dependsOn": [
+                "build"
+            ],
+            "options": {
+                "command": "electron .",
+                "cwd": "apps/server-electron"
+            }
+        }
+    }
+}

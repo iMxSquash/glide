@@ -1,0 +1,9 @@
+node_modules
+dist
+.nx
+*.log
+.DS_Store
+.env
+out
+build
+*.exe

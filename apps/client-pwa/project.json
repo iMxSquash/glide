@@ -1,0 +1,24 @@
+{
+    "name": "client-pwa",
+    "$schema": "../../node_modules/nx/schemas/project-schema.json",
+    "sourceRoot": "apps/client-pwa/src",
+    "projectType": "application",
+    "targets": {
+        "build": {
+            "executor": "@nx/vite:build",
+            "outputs": [
+                "{options.outputPath}"
+            ],
+            "options": {
+                "outputPath": "dist/apps/client-pwa"
+            }
+        },
+        "serve": {
+            "executor": "@nx/vite:dev-server",
+            "options": {
+                "buildTarget": "client-pwa:build",
+                "port": 5173
+            }
+        }
+    }
+}
