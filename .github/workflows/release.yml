@@ -65,11 +65,15 @@ jobs:
         run: |
           echo "Windows files:"
           ls -laR ./dist-windows/
+          echo "Installer files only:"
+          ls -la ./dist-windows/*.exe
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          files: dist-windows/**/*
+          files: |
+            dist-windows/*.exe
+            dist-windows/*.exe.blockmap
           body: |
             ## Glide ${{ github.ref_name }}
 
