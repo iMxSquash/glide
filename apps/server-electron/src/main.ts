@@ -139,7 +139,11 @@ function startServer(): void {
   const expressApp = express();
 
   // Serve PWA static files
-  const pwaPath = path.join(__dirname, "../../../../dist/apps/client-pwa");
+  const isDev = !app.isPackaged;
+  const pwaPath = isDev
+    ? path.join(__dirname, "../../../../dist/apps/client-pwa")
+    : path.join(process.resourcesPath, "dist/apps/client-pwa");
+
   if (fs.existsSync(pwaPath)) {
     console.log(`✅ Serving PWA from: ${pwaPath}`);
     expressApp.use(express.static(pwaPath));
