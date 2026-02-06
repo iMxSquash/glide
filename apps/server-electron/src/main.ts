@@ -6,6 +6,8 @@ import * as path from "path";
 import * as os from "os";
 import * as QRCode from "qrcode";
 import { mouse, keyboard, Key } from "@nut-tree-fork/nut-js";
+import express from "express";
+import { execSync } from "child_process";
 
 const PORT = 3000;
 let mainWindow: BrowserWindow | null = null;
@@ -58,17 +60,86 @@ function generateSelfSignedCert(): { key: string; cert: string } {
 }
 
 /**
+ * @param {string} cmd
+ * @returns {boolean}
+ */
+function execCommand(cmd: string): boolean {
+  try {
+    execSync(cmd, { stdio: "ignore" });
+    return true;
+  } catch (error) {
+    console.error(`Command failed: ${cmd}`);
+    return false;
+  }
+}
+
+/**
+ * Open firewall port on Windows
+ */
+function openFirewallPort(): void {
+  if (process.platform !== "win32") return;
+
+  console.log(`Opening port ${PORT} in Windows Firewall...`);
+  const ruleName = `Glide_${PORT}`;
+
+  // Delete existing rule
+  execCommand(`netsh advfirewall firewall delete rule name="${ruleName}"`);
+
+  // Add new rule
+  const success = execCommand(
+    `netsh advfirewall firewall add rule name="${ruleName}" dir=in action=allow protocol=TCP localport=${PORT}`,
+  );
+
+  if (success) {
+    console.log(`✅ Port ${PORT} opened in Windows Firewall`);
+  } else {
+    console.warn(`⚠️  Could not open port. May need administrator rights.`);
+  }
+}
+
+/**
+ * Close firewall port on Windows
+ */
+function closeFirewallPort(): void {
+  if (process.platform !== "win32") return;
+
+  console.log(`Closing port ${PORT} in Windows Firewall...`);
+  const ruleName = `Glide_${PORT}`;
+  execCommand(`netsh advfirewall firewall delete rule name="${ruleName}"`);
+}
+
+/**
  * Start Socket.io server (HTTPS with self-signed cert)
  */
 function startServer(): void {
+  openFirewallPort();
+
   const selfsigned = require("selfsigned");
   const attrs = [{ name: "commonName", value: "glide-server" }];
   const pems = selfsigned.generate(attrs, { days: 365 });
 
-  const httpsServer = https.createServer({
-    key: pems.private,
-    cert: pems.cert,
-  });
+  const expressApp = express();
+
+  // Serve PWA static files
+  const pwaPath = path.join(__dirname, "../../../../dist/apps/client-pwa");
+  if (fs.existsSync(pwaPath)) {
+    console.log(`✅ Serving PWA from: ${pwaPath}`);
+    expressApp.use(express.static(pwaPath));
+    expressApp.get("*", (req, res) => {
+      res.sendFile(path.join(pwaPath, "index.html"));
+    });
+  } else {
+    console.warn(`⚠️  PWA not found at: ${pwaPath}`);
+    console.warn(`Run 'npm run build:client' first`);
+  }
+
+  const httpsServer = https.createServer(
+    {
+      key: pems.private,
+      cert: pems.cert,
+    },
+    expressApp,
+  );
 
   io = new Server(httpsServer, {
     cors: { origin: "*" },
@@ -114,7 +185,10 @@ function startServer(): void {
   });
 
   httpsServer.listen(PORT, "0.0.0.0", () => {
-    console.log(`Glide server running on https://0.0.0.0:${PORT}`);
+    console.log(`\n🚀 Glide server running`);
+    console.log(`   Local:   https://0.0.0.0:${PORT}`);
+    console.log(`   Network: https://${localIP}:${PORT}`);
+    console.log(`   PIN:     ${currentPIN}\n`);
     isServerRunning = true;
   });
 }
@@ -125,6 +199,15 @@ function startServer(): void {
 function createTray(): void {
   const icon = nativeImage.createEmpty();
   tray = new Tray(icon);
+  tray.setToolTip("Glide - Remote PC Control");
+
+  tray.on("click", () => {
+    showPINWindow();
+  });
+
+  tray.on("double-click", () => {
+    showPINWindow();
+  });
 
   const updateMenu = () => {
     const contextMenu = Menu.buildFromTemplate([
@@ -132,24 +215,29 @@ function createTray(): void {
         label: `PIN: ${currentPIN}`,
         enabled: false,
       },
+      {
+        label: `IP: ${localIP}:3000`,
+        enabled: false,
+      },
       { type: "separator" },
       {
-        label: "Show PIN",
+        label: "Show PIN Window",
         click: () => {
           showPINWindow();
         },
       },
       {
-        label: isServerRunning ? "Pause" : "Resume",
+        label: isServerRunning ? "Pause Server" : "Resume Server",
         click: () => {
           isServerRunning = !isServerRunning;
           updateMenu();
         },
       },
+      { type: "separator" },
       {
         label: "Quit",
         click: () => {
-          app.quit();
+          app.exit(0);
         },
       },
     ]);
@@ -255,7 +343,8 @@ async function showPINWindow(): Promise<void> {
   <div class="container">
     <h1>Glide Server</h1>
     <div class="pin">${currentPIN}</div>
-    <p class="info">${localIP}:3000</p>
+    <p class="info">Open on iPhone:</p>
+    <p class="info" style="color: #6EE7B7; font-size: 16px; font-weight: 500;">https://${localIP}:3000</p>
     <button id="toggleBtn">Show QR Code</button>
     <div id="qrContainer">
       <img src="${qrCodeDataURL}" alt="QR Code" />
@@ -288,6 +377,11 @@ async function showPINWindow(): Promise<void> {
     mainWindow?.hide();
   });
 
+  mainWindow.on("close", (event) => {
+    event.preventDefault();
+    mainWindow?.hide();
+  });
+
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
@@ -299,8 +393,23 @@ app.whenReady().then(() => {
   startServer();
   createTray();
   showPINWindow();
+
+  // Hide from dock on macOS (run in background only)
+  if (process.platform === "darwin") {
+    app.dock.hide();
+  }
 });
 
 app.on("window-all-closed", () => {
   // Keep app running in tray
+});
+
+app.on("before-quit", () => {
+  // Close firewall port on Windows before quitting
+  closeFirewallPort();
+
+  // Allow actual quit
+  if (mainWindow) {
+    mainWindow.removeAllListeners("close");
+  }
 });

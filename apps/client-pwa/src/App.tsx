@@ -44,13 +44,16 @@ export default function App() {
   const connectWithPin = async (ip: string, pinCode: string) => {
     setIsConnecting(true);
 
-    // Nettoie l'IP (enlève le port si présent)
-    const cleanIP = ip.replace(/:3000$/, "").trim();
-    console.log(
-      `Tentative connexion : http://${cleanIP}:3000 avec PIN ${pinCode}`,
-    );
+    // Détecte si hébergé par le serveur Electron (même origine)
+    const isHostedByServer =
+      window.location.protocol === "https:" && window.location.port === "3000";
+    const targetURL = isHostedByServer
+      ? `${window.location.protocol}//${window.location.hostname}:${window.location.port}`
+      : `https://${ip.replace(/:3000$/, "").trim()}:3000`;
 
-    const socket = io(`https://${cleanIP}:3000`, {
+    console.log(`Connexion à : ${targetURL} avec PIN ${pinCode}`);
+
+    const socket = io(targetURL, {
       auth: { pin: pinCode },
       transports: ["websocket"],
       timeout: 10000,
@@ -63,7 +66,7 @@ export default function App() {
       setIsConnected(true);
       setIsConnecting(false);
       setShowPinModal(false);
-      setServerIP(cleanIP);
+      setServerIP(ip.replace(/:3000$/, "").trim());
       socketRef.current = socket;
     });
 
@@ -71,7 +74,7 @@ export default function App() {
       console.error("❌ Erreur connexion:", error);
       setIsConnecting(false);
       alert(
-        `Connection failed: ${error.message}\n\nVérifier:\n1. Serveur lancé sur ${cleanIP}\n2. Windows Firewall autorise port 3000\n3. Téléphone et PC sur même WiFi`,
+        `Connection failed: ${error.message}\n\nVérifier:\n1. Serveur lancé\n2. Windows Firewall autorise port 3000\n3. Téléphone et PC sur même WiFi`,
       );
     });
   };

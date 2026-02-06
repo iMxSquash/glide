@@ -13,8 +13,12 @@
         "dev:client": "nx serve client-pwa",
         "build:server": "nx build server-electron",
         "build:client": "nx build client-pwa",
-        "build:all": "nx run-many --target=build --all",
-        "dist:win": "cd apps/server-electron && npm run dist"
+        "build:all": "npm run build:client && npm run build:server",
+        "dist:win": "npm run build:all && cd apps/server-electron && npm run dist",
+        "setup:autostart": "node scripts/setup-autostart.js enable",
+        "remove:autostart": "node scripts/setup-autostart.js disable",
+        "setup:firewall": "node scripts/setup-firewall.js open",
+        "remove:firewall": "node scripts/setup-firewall.js close"
     },
     "devDependencies": {
         "@nx/react": "^20.3.0",
