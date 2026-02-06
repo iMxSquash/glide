@@ -23,10 +23,10 @@
         "remove:firewall": "node scripts/setup-firewall.cjs close"
     },
     "devDependencies": {
-        "@nx/react": "^20.3.0",
-        "@nx/vite": "^20.3.0",
-        "@nx/workspace": "^20.3.0",
-        "nx": "^20.3.0",
+        "@nx/react": "^22.4.5",
+        "@nx/vite": "^22.4.5",
+        "@nx/workspace": "^22.4.5",
+        "nx": "^22.4.5",
         "typescript": "^5.8.3"
     }
 }
