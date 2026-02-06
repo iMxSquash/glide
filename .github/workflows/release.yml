@@ -32,24 +32,40 @@ jobs:
       - name: Build Windows
         if: matrix.os == 'windows-latest'
         run: npm run dist:win
+      
+      - name: List Windows build output
+        if: matrix.os == 'windows-latest'
+        run: |
+          echo "Contents of apps/server-electron/out:"
+          ls -la apps/server-electron/out/ || echo "Directory not found"
+          echo "All .exe files:"
+          find apps/server-electron/out -name "*.exe" -type f || echo "No .exe found"
 
       - name: Build macOS
         if: matrix.os == 'macos-latest'
         run: npm run dist:mac
+      
+      - name: List macOS build output
+        if: matrix.os == 'macos-latest'
+        run: |
+          echo "Contents of apps/server-electron/out:"
+          ls -la apps/server-electron/out/ || echo "Directory not found"
+          echo "All .dmg files:"
+          find apps/server-electron/out -name "*.dmg" -type f || echo "No .dmg found"
 
       - name: Upload Windows artifacts
         if: matrix.os == 'windows-latest'
         uses: actions/upload-artifact@v4
         with:
           name: windows-installer
-          path: apps/server-electron/out/*.exe
+          path: apps/server-electron/out/
 
       - name: Upload macOS artifacts
         if: matrix.os == 'macos-latest'
         uses: actions/upload-artifact@v4
         with:
           name: macos-installer
-          path: apps/server-electron/out/*.dmg
+          path: apps/server-electron/out/
 
   create-release:
     needs: release
@@ -70,7 +86,7 @@ jobs:
         with:
           name: macos-installer
           path: ./dist-macos
-      
+
       - name: List files (debug)
         run: |
           echo "Windows files:"
