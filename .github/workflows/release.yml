@@ -1,0 +1,111 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  release:
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build all
+        run: npm run build:all
+
+      - name: Build Windows
+        if: matrix.os == 'windows-latest'
+        run: npm run dist:win
+
+      - name: Build macOS
+        if: matrix.os == 'macos-latest'
+        run: npm run dist:mac
+
+      - name: Upload Windows artifacts
+        if: matrix.os == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: apps/server-electron/out/*.exe
+
+      - name: Upload macOS artifacts
+        if: matrix.os == 'macos-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-installer
+          path: apps/server-electron/out/*.dmg
+
+  create-release:
+    needs: release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download Windows artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-installer
+          path: ./dist-windows
+
+      - name: Download macOS artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-installer
+          path: ./dist-macos
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            ./dist-windows/*.exe
+            ./dist-macos/*.dmg
+          body: |
+            ## Glide ${{ github.ref_name }}
+
+            ### 📦 Installation
+
+            **Windows:**
+            - Download `Glide-Setup-*.exe`
+            - Run installer
+            - App runs in system tray
+
+            **macOS:**
+            - Download `Glide-*.dmg`
+            - Drag to Applications
+            - App runs in menu bar
+
+            ### 🚀 Usage
+
+            1. Launch Glide app on PC
+            2. Note PIN and IP from popup
+            3. On iPhone Safari: `https://<IP>:3000`
+            4. Enter PIN
+            5. Control PC with trackpad gestures!
+
+            ### 🔥 Features
+            - ✅ Automatic firewall management (Windows)
+            - ✅ Self-signed certificate with IP SAN
+            - ✅ PIN authentication regenerated each launch
+            - ✅ Local network only (secure)
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
