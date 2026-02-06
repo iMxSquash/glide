@@ -55,53 +55,38 @@ jobs:
           name: windows-installer
           path: ./dist-windows
 
-      - name: Download macOS artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: macos-installer
-          path: ./dist-macos
-
       - name: List files (debug)
         run: |
           echo "Windows files:"
-          ls -la ./dist-windows/
-          echo "macOS files:"
-          ls -la ./dist-macos/
+          ls -laR ./dist-windows/
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          files: |
-            dist-windows/*
-            dist-macos/*
+          files: dist-windows/**/*
           body: |
             ## Glide ${{ github.ref_name }}
 
-            ### 📦 Installation
+            ### 📦 Installation Windows
 
-            **Windows:**
-            - Download `Glide-Setup-*.exe`
-            - Run installer
-            - App runs in system tray
+            - Télécharger le fichier `.exe`
+            - Lancer l'installateur
+            - L'app démarre dans la barre système
 
-            **macOS:**
-            - Download `Glide-*.dmg`
-            - Drag to Applications
-            - App runs in menu bar
+            ### 🚀 Utilisation
 
-            ### 🚀 Usage
+            1. Lancer Glide sur ton PC
+            2. Noter le PIN et l'IP affichés
+            3. Sur iPhone Safari: `https://<IP>:3000`
+            4. Entrer le PIN
+            5. Contrôler le PC avec les gestes trackpad !
 
-            1. Launch Glide app on PC
-            2. Note PIN and IP from popup
-            3. On iPhone Safari: `https://<IP>:3000`
-            4. Enter PIN
-            5. Control PC with trackpad gestures!
-
-            ### 🔥 Features
-            - ✅ Automatic firewall management (Windows)
-            - ✅ Self-signed certificate with IP SAN
-            - ✅ PIN authentication regenerated each launch
-            - ✅ Local network only (secure)
+            ### 🔥 Fonctionnalités
+            - ✅ Gestion automatique du firewall Windows
+            - ✅ Certificat auto-signé avec IP SAN
+            - ✅ PIN régénéré à chaque lancement
+            - ✅ Réseau local uniquement (sécurisé)
+            - ✅ PWA installable sur iPhone
           draft: false
           prerelease: false
         env:
