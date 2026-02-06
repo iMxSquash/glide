@@ -19,7 +19,7 @@ Remote PC control from iOS via local HTTPS server.
 
 ### Download (Recommended)
 
-**Latest release:** [Download from GitHub Releases](https://github.com/YOUR_USERNAME/glide/releases/latest)
+**Latest release:** [Download from GitHub Releases](https://github.com/imxsquash/glide/releases/latest)
 
 - **Windows:** `Glide-Setup-*.exe`
 - **macOS:** `Glide-*.dmg`
