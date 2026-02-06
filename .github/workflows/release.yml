@@ -70,13 +70,20 @@ jobs:
         with:
           name: macos-installer
           path: ./dist-macos
+      
+      - name: List files (debug)
+        run: |
+          echo "Windows files:"
+          ls -la ./dist-windows/
+          echo "macOS files:"
+          ls -la ./dist-macos/
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            ./dist-windows/*.exe
-            ./dist-macos/*.dmg
+            dist-windows/*
+            dist-macos/*
           body: |
             ## Glide ${{ github.ref_name }}
 
