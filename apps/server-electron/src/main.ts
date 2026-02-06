@@ -115,8 +115,26 @@ function startServer(): void {
   openFirewallPort();
 
   const selfsigned = require("selfsigned");
-  const attrs = [{ name: "commonName", value: "glide-server" }];
-  const pems = selfsigned.generate(attrs, { days: 365 });
+  const attrs = [
+    { name: "commonName", value: localIP },
+    { name: "organizationName", value: "Glide" },
+  ];
+  const pems = selfsigned.generate(attrs, {
+    days: 365,
+    keySize: 2048,
+    algorithm: "sha256",
+    extensions: [
+      {
+        name: "subjectAltName",
+        altNames: [
+          { type: 2, value: "localhost" },
+          { type: 2, value: localIP },
+          { type: 7, ip: "127.0.0.1" },
+          { type: 7, ip: localIP },
+        ],
+      },
+    ],
+  });
 
   const expressApp = express();
 

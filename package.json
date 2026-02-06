@@ -9,16 +9,18 @@
         "libs/*"
     ],
     "scripts": {
-        "dev:server": "nx serve server-electron",
+        "dev:server": "node scripts/dev-server-wrapper.cjs",
+        "dev:server:raw": "nx serve server-electron",
         "dev:client": "nx serve client-pwa",
         "build:server": "nx build server-electron",
         "build:client": "nx build client-pwa",
         "build:all": "npm run build:client && npm run build:server",
         "dist:win": "npm run build:all && cd apps/server-electron && npm run dist",
-        "setup:autostart": "node scripts/setup-autostart.js enable",
-        "remove:autostart": "node scripts/setup-autostart.js disable",
-        "setup:firewall": "node scripts/setup-firewall.js open",
-        "remove:firewall": "node scripts/setup-firewall.js close"
+        "dist:mac": "npm run build:all && cd apps/server-electron && npm run dist:mac",
+        "setup:autostart": "node scripts/setup-autostart.cjs enable",
+        "remove:autostart": "node scripts/setup-autostart.cjs disable",
+        "setup:firewall": "node scripts/setup-firewall.cjs open",
+        "remove:firewall": "node scripts/setup-firewall.cjs close"
     },
     "devDependencies": {
         "@nx/react": "^20.3.0",
