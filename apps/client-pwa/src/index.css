@@ -7,11 +7,22 @@
     touch-action: none;
 }
 
+html,
+body {
+    height: 100%;
+    /* Empêche le pull-to-refresh et le swipe-back iOS de "rebondir" par-dessus l'app. */
+    overscroll-behavior: none;
+}
+
 body {
     margin: 0;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+    height: 100%;
 }
 
 h1,

@@ -5,7 +5,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import * as QRCode from "qrcode";
-import { mouse } from "@nut-tree-fork/nut-js";
+import { mouse, keyboard, Button, Key } from "@nut-tree-fork/nut-js";
 import express from "express";
 import { execSync } from "child_process";
 import loudness from "loudness";
@@ -41,8 +41,32 @@ let pendingMouseDelta = { x: 0, y: 0 };
 let cursorPosition: { x: number; y: number } | null = null;
 let isApplyingMousePosition = false;
 
+// Deltas de scroll (2 doigts) accumulés en pixels, convertis en "steps" nut-js
+// (l'unité de scrollUp/Down/Left/Right est OS-dépendante, pas le pixel).
+let pendingScrollDelta = { x: 0, y: 0 };
+const SCROLL_PIXELS_PER_STEP = 40;
+
+async function applyPendingScroll(): Promise<void> {
+  const stepsY = Math.trunc(pendingScrollDelta.y / SCROLL_PIXELS_PER_STEP);
+  const stepsX = Math.trunc(pendingScrollDelta.x / SCROLL_PIXELS_PER_STEP);
+  if (stepsY === 0 && stepsX === 0) return;
+
+  // Le reste (< 1 step) est conservé pour le prochain tick, sinon les petits
+  // mouvements de scroll s'accumulent puis se perdent (curseur qui "colle").
+  pendingScrollDelta.y -= stepsY * SCROLL_PIXELS_PER_STEP;
+  pendingScrollDelta.x -= stepsX * SCROLL_PIXELS_PER_STEP;
+
+  if (stepsY > 0) await mouse.scrollDown(stepsY);
+  else if (stepsY < 0) await mouse.scrollUp(-stepsY);
+
+  if (stepsX > 0) await mouse.scrollRight(stepsX);
+  else if (stepsX < 0) await mouse.scrollLeft(-stepsX);
+}
+
 function startMouseTickLoop(): void {
   setInterval(async () => {
+    await applyPendingScroll();
+
     if (isApplyingMousePosition) return;
 
     if (pendingMouseDelta.x === 0 && pendingMouseDelta.y === 0) {
@@ -434,12 +458,39 @@ async function startServer(): Promise<void> {
       pendingMouseDelta.y += data.y;
     });
 
+    socket.on("scroll", (data: { x: number; y: number }) => {
+      pendingScrollDelta.x += data.x;
+      pendingScrollDelta.y += data.y;
+    });
+
     socket.on("leftClick", async () => {
       await mouse.leftClick();
     });
 
     socket.on("rightClick", async () => {
       await mouse.rightClick();
+    });
+
+    // Drag & drop : double-tap-and-hold côté client presse le bouton, le
+    // déplacement se fait via les mouseDelta déjà en cours, puis relâche au
+    // pointerup.
+    socket.on("mouseDown", async () => {
+      await mouse.pressButton(Button.LEFT);
+    });
+
+    socket.on("mouseUp", async () => {
+      await mouse.releaseButton(Button.LEFT);
+    });
+
+    socket.on("typeText", async (text: string) => {
+      if (typeof text === "string" && text.length > 0) {
+        await keyboard.type(text);
+      }
+    });
+
+    socket.on("keyPress", async (key: "Enter" | "Backspace") => {
+      if (key === "Enter") await keyboard.type(Key.Enter);
+      else if (key === "Backspace") await keyboard.type(Key.Backspace);
     });
 
     socket.on("volumeUp", async () => {
@@ -468,6 +519,9 @@ async function startServer(): Promise<void> {
     socket.on("disconnect", () => {
       console.log("Client disconnected");
       setConnectedClientCount(Math.max(0, connectedClientCount - 1));
+      // Sécurité : si la connexion coupe pendant un drag (WiFi, verrouillage
+      // écran...), le bouton gauche resterait sinon pressé indéfiniment sur le PC.
+      mouse.releaseButton(Button.LEFT).catch(() => {});
     });
   });
 

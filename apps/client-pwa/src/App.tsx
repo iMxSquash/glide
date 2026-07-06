@@ -12,6 +12,13 @@ interface PointerState {
 const TAP_MOVE_THRESHOLD = 12;
 // Durée max (ms) d'un tap pour qu'il soit considéré comme un clic.
 const TAP_MAX_DURATION = 300;
+// Double-tap-and-hold (= drag) : délai max entre le relâchement du 1er tap et
+// l'appui du 2e pour qu'ils soient considérés comme un double-tap.
+const DOUBLE_TAP_MAX_INTERVAL = 300;
+// Distance max (px) entre les deux taps du double-tap.
+const DOUBLE_TAP_DISTANCE_THRESHOLD = 30;
+// Durée (ms) que le 2e tap doit rester posé sans bouger avant que le drag démarre.
+const DRAG_HOLD_DELAY = 150;
 const SENSITIVITY_STORAGE_KEY = "glide-sensitivity";
 const DEFAULT_SENSITIVITY = 2;
 // Le slider n'émet pas à chaque pixel glissé, pour ne pas flooder le socket.
@@ -51,10 +58,13 @@ export default function App() {
   const [showPinModal, setShowPinModal] = useState(true);
   const [isScanning, setIsScanning] = useState(false);
   const [showManualIP, setShowManualIP] = useState(false);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
   const [volume, setVolume] = useState(50);
   const [muted, setMuted] = useState(false);
   const [clickPulse, setClickPulse] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showKeyboard, setShowKeyboard] = useState(false);
+  const [keyboardText, setKeyboardText] = useState("");
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [sensitivity, setSensitivity] = useState<number>(() => {
     const saved = localStorage.getItem(SENSITIVITY_STORAGE_KEY);
@@ -64,6 +74,7 @@ export default function App() {
   const socketRef = useRef<Socket | null>(null);
   const trackpadRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const keyboardInputRef = useRef<HTMLInputElement>(null);
   const codeReaderRef = useRef<BrowserQRCodeReader | null>(null);
   const pointersRef = useRef<Map<number, PointerState>>(new Map());
   const lastPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -79,6 +90,16 @@ export default function App() {
   const gestureHandledRef = useRef<boolean>(false);
   // Deltas accumulés en attente d'être envoyés au prochain tick rAF.
   const pendingDeltaRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  // Position par doigt pendant un geste à 2 doigts (scroll), pour calculer le
+  // delta entre deux pointermove successifs de ce doigt.
+  const twoFingerPosRef = useRef<Map<number, { x: number; y: number }>>(new Map());
+  // Deltas de scroll accumulés en attente d'être envoyés au prochain tick rAF.
+  const pendingScrollRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  // Dernier tap 1 doigt relâché (heure + position), pour détecter un double-tap.
+  const lastTapUpRef = useRef<{ time: number; x: number; y: number } | null>(null);
+  const dragHoldTimerRef = useRef<number | null>(null);
+  const isDraggingRef = useRef(false);
+  const [isDraggingUI, setIsDraggingUI] = useState(false);
   const volumeDebounceRef = useRef<number | null>(null);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
 
@@ -96,6 +117,11 @@ export default function App() {
       if ((pending.x !== 0 || pending.y !== 0) && socketRef.current) {
         socketRef.current.emit("mouseDelta", { x: pending.x, y: pending.y });
         pendingDeltaRef.current = { x: 0, y: 0 };
+      }
+      const pendingScroll = pendingScrollRef.current;
+      if ((pendingScroll.x !== 0 || pendingScroll.y !== 0) && socketRef.current) {
+        socketRef.current.emit("scroll", { x: pendingScroll.x, y: pendingScroll.y });
+        pendingScrollRef.current = { x: 0, y: 0 };
       }
       rafId = requestAnimationFrame(flush);
     };
@@ -151,6 +177,7 @@ export default function App() {
     explicitPort?: number,
   ) => {
     setIsConnecting(true);
+    setConnectionError(null);
 
     const { ip, port } = parseIpAndPort(ipInput, explicitPort ?? DEFAULT_PORT);
 
@@ -233,16 +260,33 @@ export default function App() {
       // chaque tentative : ne pas spammer une popup, le bandeau suffit.
       if (hasConnectedOnce) return;
 
-      const isStandaloneApp =
-        window.matchMedia("(display-mode: standalone)").matches ||
-        (navigator as unknown as { standalone?: boolean }).standalone === true;
-      const standaloneHint = isStandaloneApp
-        ? `\n\n⚠️ App installée détectée : iOS/Android ne proposent pas d'accepter un certificat depuis une app installée. Ouvre d'abord https://${ip}:${port} dans Safari/Chrome, accepte le certificat, puis reviens ici.`
-        : "";
+      // Le serveur distingue "Invalid PIN" / rate-limit / pause d'un simple
+      // échec réseau : afficher un message adapté plutôt qu'une alerte générique.
+      if (error.message === "Invalid PIN") {
+        setConnectionError(
+          "PIN incorrect. Vérifie le code affiché sur ton PC et réessaie.",
+        );
+      } else if (error.message.includes("Too many attempts")) {
+        setConnectionError(
+          "Trop de tentatives avec un mauvais PIN. Réessaie dans quelques minutes.",
+        );
+      } else if (error.message === "Server paused") {
+        setConnectionError(
+          "Le serveur est en pause sur le PC. Reprends-le depuis le menu de la barre des tâches.",
+        );
+      } else {
+        const isStandaloneApp =
+          window.matchMedia("(display-mode: standalone)").matches ||
+          (navigator as unknown as { standalone?: boolean }).standalone === true;
+        const standaloneHint = isStandaloneApp
+          ? ` App installée détectée : ouvre d'abord https://${ip}:${port} dans Safari/Chrome, accepte le certificat, puis reviens ici.`
+          : "";
+        setConnectionError(
+          `Impossible de joindre le serveur (${error.message}). Vérifie que le serveur est lancé, que le firewall Windows autorise le port ${port}, et que le téléphone et le PC sont sur le même WiFi.${standaloneHint}`,
+        );
+      }
 
-      alert(
-        `Connection failed: ${error.message}\n\nVérifier:\n1. Serveur lancé\n2. Windows Firewall autorise le port ${port}\n3. Téléphone et PC sur même WiFi${standaloneHint}`,
-      );
+      setShowManualIP(true);
     });
   };
 
@@ -270,19 +314,16 @@ export default function App() {
   const findServerAndConnect = async () => {
     if (pin.length !== 6) return;
 
-    // Si IP manuelle fournie, l'utiliser directement
-    if (serverIP) {
-      connectWithPin(serverIP, pin);
+    if (!serverIP) {
+      setConnectionError("Entre l'adresse IP du PC affichée sur l'écran du serveur.");
       return;
     }
 
-    // Sinon demander à l'utilisateur d'entrer l'IP
-    setIsConnecting(false);
-    alert("Please enter the server IP address shown on your PC.");
-    setShowManualIP(true);
+    connectWithPin(serverIP, pin);
   };
 
   const startQRScan = () => {
+    setConnectionError(null);
     setIsScanning(true);
   };
 
@@ -329,34 +370,116 @@ export default function App() {
     window.setTimeout(() => setClickPulse(false), 150);
   };
 
+  // Focus l'input dès l'ouverture du panneau clavier, pour ouvrir le clavier
+  // virtuel du téléphone immédiatement.
+  useEffect(() => {
+    if (showKeyboard) {
+      keyboardInputRef.current?.focus();
+    }
+  }, [showKeyboard]);
+
+  // Diffe l'ancienne et la nouvelle valeur de l'input pour envoyer seulement
+  // les caractères ajoutés/supprimés au serveur (keyboard.type côté PC), au
+  // lieu de renvoyer tout le texte à chaque frappe.
+  const handleKeyboardInputChange = (value: string) => {
+    const prev = keyboardText;
+    if (value.length > prev.length && value.startsWith(prev)) {
+      socketRef.current?.emit("typeText", value.slice(prev.length));
+    } else if (value.length < prev.length && prev.startsWith(value)) {
+      const removed = prev.length - value.length;
+      for (let i = 0; i < removed; i++) {
+        socketRef.current?.emit("keyPress", "Backspace");
+      }
+    } else {
+      // Changement non-linéaire (autocorrection, sélection remplacée...) :
+      // resynchroniser en effaçant tout puis retapant la nouvelle valeur.
+      for (let i = 0; i < prev.length; i++) {
+        socketRef.current?.emit("keyPress", "Backspace");
+      }
+      if (value) socketRef.current?.emit("typeText", value);
+    }
+    setKeyboardText(value);
+  };
+
+  const handleKeyboardKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      socketRef.current?.emit("keyPress", "Enter");
+      setKeyboardText("");
+    }
+  };
+
+  const closeKeyboard = () => {
+    setShowKeyboard(false);
+    setKeyboardText("");
+  };
+
+  // Il n'existait aucun moyen de revenir à l'écran PIN. On efface la dernière
+  // connexion mémorisée pour ne pas se reconnecter automatiquement au relancement.
+  const handleDisconnect = () => {
+    socketRef.current?.disconnect();
+    socketRef.current = null;
+    localStorage.removeItem(LAST_CONNECTION_KEY);
+    setIsConnected(false);
+    setIsReconnecting(false);
+    setShowSettings(false);
+    setShowManualIP(false);
+    setConnectionError(null);
+    setShowPinModal(true);
+  };
+
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
     const rect = trackpadRef.current?.getBoundingClientRect();
     if (!rect) return;
 
     const now = Date.now();
+    const clientX = e.nativeEvent.clientX;
+    const clientY = e.nativeEvent.clientY;
 
     pointersRef.current.set(e.pointerId, {
       id: e.pointerId,
-      x: e.nativeEvent.clientX - rect.left,
-      y: e.nativeEvent.clientY - rect.top,
+      x: clientX - rect.left,
+      y: clientY - rect.top,
     });
     pointerDownTimesRef.current.set(e.pointerId, now);
-    pointerStartPosRef.current.set(e.pointerId, {
-      x: e.nativeEvent.clientX,
-      y: e.nativeEvent.clientY,
-    });
+    pointerStartPosRef.current.set(e.pointerId, { x: clientX, y: clientY });
+    // Position de départ pour le calcul de delta de scroll à 2 doigts.
+    twoFingerPosRef.current.set(e.pointerId, { x: clientX, y: clientY });
 
     trackpadRef.current?.setPointerCapture(e.pointerId);
 
     if (pointersRef.current.size === 1) {
-      lastPosRef.current = {
-        x: e.nativeEvent.clientX,
-        y: e.nativeEvent.clientY,
-      };
+      lastPosRef.current = { x: clientX, y: clientY };
       gestureStartTimeRef.current = now;
       hasMovedRef.current = false;
       gestureHandledRef.current = false;
+
+      // Double-tap-and-hold = drag : si ce doigt se pose vite et près du
+      // dernier tap relâché, et qu'il reste posé sans bouger, on démarre un
+      // drag (mouse.pressButton côté serveur).
+      const lastTap = lastTapUpRef.current;
+      if (
+        lastTap &&
+        now - lastTap.time < DOUBLE_TAP_MAX_INTERVAL &&
+        Math.hypot(clientX - lastTap.x, clientY - lastTap.y) <
+          DOUBLE_TAP_DISTANCE_THRESHOLD
+      ) {
+        const pointerId = e.pointerId;
+        dragHoldTimerRef.current = window.setTimeout(() => {
+          dragHoldTimerRef.current = null;
+          if (
+            pointersRef.current.size === 1 &&
+            pointersRef.current.has(pointerId) &&
+            !hasMovedRef.current
+          ) {
+            isDraggingRef.current = true;
+            setIsDraggingUI(true);
+            navigator.vibrate?.(20);
+            socketRef.current?.emit("mouseDown");
+          }
+        }, DRAG_HOLD_DELAY);
+      }
     }
   };
 
@@ -370,8 +493,30 @@ export default function App() {
       const totalDx = e.nativeEvent.clientX - startPos.x;
       const totalDy = e.nativeEvent.clientY - startPos.y;
       if (Math.hypot(totalDx, totalDy) > TAP_MOVE_THRESHOLD) {
+        // Un vrai mouvement annule un drag en attente de confirmation (le
+        // doigt bouge au lieu de rester posé pour déclencher le hold).
+        if (!hasMovedRef.current && dragHoldTimerRef.current !== null) {
+          window.clearTimeout(dragHoldTimerRef.current);
+          dragHoldTimerRef.current = null;
+        }
         hasMovedRef.current = true;
       }
+    }
+
+    // Scroll à 2 doigts : chaque doigt fait avancer le scroll de son propre
+    // delta (divisé par 2 car les deux doigts bougent ensemble), au lieu de
+    // déplacer le curseur.
+    if (pointersRef.current.size === 2) {
+      const prev = twoFingerPosRef.current.get(e.pointerId);
+      const cx = e.nativeEvent.clientX;
+      const cy = e.nativeEvent.clientY;
+      if (prev) {
+        // Convention "natural scrolling" : le contenu suit le doigt.
+        pendingScrollRef.current.x += (prev.x - cx) / 2;
+        pendingScrollRef.current.y += (prev.y - cy) / 2;
+      }
+      twoFingerPosRef.current.set(e.pointerId, { x: cx, y: cy });
+      return;
     }
 
     if (pointersRef.current.size !== 1) return;
@@ -407,6 +552,7 @@ export default function App() {
     e.preventDefault();
     const wasSingleTouch = pointersRef.current.size === 1;
     const wasTwoTouches = pointersRef.current.size === 2;
+    const wasDragging = isDraggingRef.current;
 
     // Tap 1 doigt : durée mesurée depuis que CE doigt a touché l'écran.
     // Tap 2 doigts : durée mesurée depuis le doigt le plus récent (pas le 1er,
@@ -425,9 +571,23 @@ export default function App() {
     pointersRef.current.delete(e.pointerId);
     pointerDownTimesRef.current.delete(e.pointerId);
     pointerStartPosRef.current.delete(e.pointerId);
+    twoFingerPosRef.current.delete(e.pointerId);
     trackpadRef.current?.releasePointerCapture(e.pointerId);
 
-    if (socketRef.current && !gestureHandledRef.current) {
+    if (dragHoldTimerRef.current !== null) {
+      window.clearTimeout(dragHoldTimerRef.current);
+      dragHoldTimerRef.current = null;
+    }
+
+    if (wasDragging && wasSingleTouch) {
+      // Relâchement du drag démarré par le double-tap-and-hold.
+      isDraggingRef.current = false;
+      setIsDraggingUI(false);
+      socketRef.current?.emit("mouseUp");
+      navigator.vibrate?.(10);
+      gestureHandledRef.current = true;
+      lastTapUpRef.current = null;
+    } else if (socketRef.current && !gestureHandledRef.current) {
       // Tap 2 doigts = right click
       if (wasTwoTouches && tapDuration < TAP_MAX_DURATION && !hasMovedRef.current) {
         socketRef.current.emit("rightClick");
@@ -439,6 +599,12 @@ export default function App() {
         socketRef.current.emit("leftClick");
         triggerClickFeedback();
         gestureHandledRef.current = true;
+        // Mémorisé pour détecter un éventuel double-tap-and-hold juste après.
+        lastTapUpRef.current = {
+          time: now,
+          x: e.nativeEvent.clientX,
+          y: e.nativeEvent.clientY,
+        };
       }
     }
 
@@ -448,11 +614,34 @@ export default function App() {
   };
 
   if (showPinModal) {
+    const qrIcon = (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"
+        />
+      </svg>
+    );
+
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-6">
         <div className="bg-surface rounded-2xl p-8 w-full max-w-sm">
           <h1 className="text-3xl font-bold text-accent mb-2">Glide</h1>
-          <p className="text-secondary mb-6">Enter PIN from your PC</p>
+          <p className="text-secondary mb-6">
+            {isScanning
+              ? "Scan the QR code shown on your PC"
+              : showManualIP
+                ? "Enter the IP and PIN from your PC"
+                : "Connect to your PC"}
+          </p>
+
+          {connectionError && (
+            <div className="bg-background text-red-400 text-sm p-3 rounded-xl mb-4 border border-red-400/30">
+              {connectionError}
+            </div>
+          )}
 
           {isScanning ? (
             <>
@@ -469,7 +658,7 @@ export default function App() {
                 Cancel
               </button>
             </>
-          ) : (
+          ) : showManualIP ? (
             <>
               <input
                 type="text"
@@ -526,24 +715,35 @@ export default function App() {
               </button>
 
               <button
-                onClick={startQRScan}
+                onClick={() => {
+                  setConnectionError(null);
+                  setShowManualIP(false);
+                }}
                 disabled={isConnecting}
                 className="w-full bg-surface-light text-primary font-medium py-3 rounded-xl disabled:opacity-50 flex items-center justify-center gap-2"
               >
-                <svg
-                  className="w-5 h-5"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"
-                  />
-                </svg>
+                {qrIcon}
+                Scan QR Code Instead
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={startQRScan}
+                className="w-full bg-accent text-background font-medium py-4 rounded-xl flex items-center justify-center gap-2 mb-3"
+              >
+                {qrIcon}
                 Scan QR Code
+              </button>
+
+              <button
+                onClick={() => {
+                  setConnectionError(null);
+                  setShowManualIP(true);
+                }}
+                className="w-full text-secondary text-sm py-2"
+              >
+                Enter IP and PIN manually
               </button>
             </>
           )}
@@ -558,6 +758,20 @@ export default function App() {
         <h1 className="text-xl font-bold text-accent">Glide</h1>
         <div className="flex items-center gap-3">
           <div className="text-sm text-secondary">PIN: {pin}</div>
+          <button
+            onClick={() => setShowKeyboard(true)}
+            aria-label="Keyboard"
+            className="w-9 h-9 flex items-center justify-center bg-surface rounded-lg text-secondary"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M3 6a2 2 0 012-2h14a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V6zM6 9h.01M9 9h.01M12 9h.01M15 9h.01M18 9h.01M6 12h.01M9 12h.01M12 12h.01M15 12h.01M18 12h.01M8 15h8"
+              />
+            </svg>
+          </button>
           <button
             onClick={() => setShowSettings((v) => !v)}
             aria-label="Settings"
@@ -580,6 +794,38 @@ export default function App() {
           </button>
         </div>
       </div>
+
+      {showKeyboard && (
+        <div className="fixed inset-0 bg-background/95 z-50 flex flex-col p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-primary">Keyboard</h2>
+            <button
+              onClick={closeKeyboard}
+              className="text-secondary bg-surface px-4 py-2 rounded-xl text-sm"
+            >
+              Close
+            </button>
+          </div>
+          <input
+            ref={keyboardInputRef}
+            type="text"
+            value={keyboardText}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+              handleKeyboardInputChange(e.target.value)
+            }
+            onKeyDown={handleKeyboardKeyDown}
+            enterKeyHint="send"
+            autoCapitalize="off"
+            autoCorrect="off"
+            spellCheck={false}
+            placeholder="Type here..."
+            className="w-full bg-surface text-primary p-4 rounded-xl text-lg focus:outline-none focus:ring-2 focus:ring-accent"
+          />
+          <p className="text-secondary text-sm mt-3">
+            Les frappes sont envoyées en direct au PC. Entrée envoie la touche Entrée.
+          </p>
+        </div>
+      )}
 
       {isReconnecting && (
         <div className="mx-4 mb-2 px-4 py-2 bg-surface-light rounded-xl flex items-center gap-2">
@@ -623,6 +869,12 @@ export default function App() {
               }
               className="w-full"
             />
+            <button
+              onClick={handleDisconnect}
+              className="w-full mt-4 bg-background text-red-400 font-medium py-3 rounded-xl"
+            >
+              Disconnect
+            </button>
           </div>
         </div>
       )}
@@ -634,8 +886,8 @@ export default function App() {
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
         className={`flex-1 bg-surface m-4 rounded-2xl min-h-[200px] touch-none transition-[background-color] duration-150 ${
-          clickPulse ? "bg-surface-light" : ""
-        }`}
+          clickPulse || isDraggingUI ? "bg-surface-light" : ""
+        } ${isDraggingUI ? "ring-2 ring-accent" : ""}`}
       />
 
       <div className="p-6 bg-surface m-4 rounded-2xl">

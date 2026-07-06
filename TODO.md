@@ -52,14 +52,14 @@ Les bugs constatés (souris qui saute, clics qui ne partent pas, volume aléatoi
 - [x] **Rate-limit sur l'auth PIN** (`main.ts:171-178`) : une IP est bloquée 5 minutes après 5 PIN faux.
 - [x] Événement `connected`/`clientCount` vers le tray + fenêtre PIN ("N appareil(s) connecté(s)").
 
-### Client PWA
-- [ ] **Scroll à 2 doigts** — indispensable pour une télécommande souris : drag à 2 doigts = `mouse.scrollDown/scrollUp` (nut-js le supporte). Actuellement 2 doigts = rien (`App.tsx:163` bloque si size !== 1).
-- [ ] **Drag & drop** : double-tap-and-hold = `mouse.pressButton` → déplacer → relâcher = `mouse.releaseButton`.
-- [ ] **Clavier texte** : un bouton qui ouvre un input → envoie les frappes au PC (`keyboard.type`). Même basique, ça change tout pour taper une URL/recherche sur le PC.
-- [ ] **Écran de connexion : parcours QR d'abord** : le scan QR (`ip+pin` déjà dans le QR, `main.ts:295`) devrait être le chemin principal, la saisie manuelle le fallback. Après scan, connexion directe sans saisie.
-- [ ] Gérer l'erreur "Invalid PIN" distinctement de "serveur injoignable" (`App.tsx:73-79` affiche le même `alert` générique — remplacer les `alert()` par des messages dans l'UI).
-- [ ] Bouton **Déconnexion** (aucun moyen de revenir au modal PIN actuellement).
-- [ ] Empêcher le pull-to-refresh / swipe-back iOS sur le trackpad (`overscroll-behavior: none`, déjà partiellement couvert par `touch-none`, à vérifier sur device).
+### Client PWA ✅ Fait
+- [x] **Scroll à 2 doigts** — drag à 2 doigts accumule un delta (rAF, comme `mouseDelta`) envoyé via l'event `scroll` ; le serveur convertit les pixels accumulés en "steps" et appelle `mouse.scrollUp/Down/Left/Right`.
+- [x] **Drag & drop** : double-tap-and-hold (2e tap posé < 300ms après le 1er, à moins de 30px, tenu 150ms sans bouger) émet `mouseDown` (`mouse.pressButton`), le déplacement réutilise le flux `mouseDelta` existant, le relâchement émet `mouseUp` (`mouse.releaseButton`). Sécurité : relâchement forcé du bouton à la déconnexion socket.
+- [x] **Clavier texte** : bouton clavier dans le header ouvre un overlay avec un input ; les caractères tapés/effacés sont diffés et envoyés en direct (`typeText`/`keyPress`), le serveur utilise `keyboard.type`.
+- [x] **Écran de connexion : parcours QR d'abord** : l'écran par défaut propose "Scan QR Code" en CTA principal, la saisie manuelle IP/PIN passe derrière un lien "Enter IP and PIN manually".
+- [x] Gérer l'erreur "Invalid PIN" distinctement de "serveur injoignable"/rate-limit/pause : bandeau d'erreur inline dans le modal (plus d'`alert()`) avec un message dédié par cas.
+- [x] Bouton **Disconnect** dans le panneau settings : ferme la socket, efface la dernière connexion mémorisée, retour au modal PIN (écran QR-first).
+- [x] `overscroll-behavior: none` + `height: 100%` sur `html`/`body`/`#root` pour bloquer le pull-to-refresh/swipe-back iOS.
 
 ### Sécurité (décision à prendre)
 - [ ] Trancher **HTTPS auto-signé vs HTTP+WS local** : le HTTPS auto-signé cause la friction certificat (surtout PWA iOS, cf. P0). Alternative assumée pour du 100% LAN : HTTP simple + PIN, en documentant que le trafic n'est pas chiffré sur le WiFi local. Ou garder HTTPS et documenter le flow d'acceptation. → Cette décision conditionne l'UX d'onboarding entière.
@@ -94,8 +94,9 @@ Les bugs constatés (souris qui saute, clics qui ne partent pas, volume aléatoi
 1. ~~**Trackpad** (P0.1 + P0.2) — c'est le cœur du produit : accumulation des deltas + rAF côté client, boucle d'application côté serveur, fix du double-clic et du seuil de tap. Testable immédiatement en dev.~~ ✅ Fait
 2. ~~**Robustesse connexion** (P0.4) — cert persistant, wake lock, reconnexion auto, fonts locales.~~ ✅ Fait
 3. ~~**Volume** (P0.3) — supprimer le listener clavier mort, brancher le slider sur `loudness`, sync du volume réel.~~ ✅ Fait
-4. **Assets & tray** (P1) — icônes PWA + tray + installeur. ← prochaine étape
-5. **Scroll 2 doigts + drag + clavier** (P1).
-6. **Tests devices réels + onboarding** (P2), puis release.
+4. ~~**Assets & tray** (P1) — icônes PWA + tray + installeur.~~ ✅ Fait
+5. ~~**Scroll 2 doigts + drag + clavier + QR-first + erreurs + déconnexion + pull-to-refresh** (P1).~~ ✅ Fait
+6. **Sécurité — trancher HTTPS vs HTTP+WS local** (P1, reste à décider). ← prochaine étape
+7. **Tests devices réels + onboarding** (P2), puis release.
 
-> **P0 entièrement traité.** Testé par build + typecheck (`tsc --noEmit`) sur les deux apps ; reste à valider sur devices réels (cf. P2) avant de passer au P1.
+> **P0 et P1 "Serveur Windows" + "Client PWA" entièrement traités.** Testé par build + typecheck (`tsc --noEmit`) sur les deux apps ; reste à valider sur devices réels (cf. P2) et à trancher la décision sécurité HTTPS avant de passer au P2.
