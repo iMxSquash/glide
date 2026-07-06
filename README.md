@@ -82,10 +82,12 @@ npm run dist:mac      # macOS .dmg
    - ✅ macOS handles firewall automatically
 
 ### iPhone
-1. **Open Safari:** Navigate to `https://192.168.x.x:3000/` (from PC popup)
+1. **Open Safari:** Navigate to `https://192.168.x.x:3000/` (from PC popup) — use Safari itself, not an already-installed home screen app
 2. **Accept certificate:** Trust the self-signed certificate
 3. **Enter PIN:** 6-digit code from PC
-4. **Control:** Trackpad gestures + volume buttons
+4. **Control:** Trackpad gestures + on-screen volume slider
+
+> ⚠️ **Installed PWA + certificate:** once the app is added to the home screen, it runs in standalone mode and iOS won't show the "trust this certificate" prompt if the cert ever changes (new PC, new IP, cert renewed). If the installed app can't connect, open the same `https://` URL directly in Safari first, accept the certificate there, then reopen the installed app.
 
 ## Auto-start (Optional)
 
@@ -103,7 +105,7 @@ npm run remove:autostart
   - 1-finger move = cursor
   - 1-finger tap = left click
   - 2-finger tap = right click
-- ✅ **Volume control:** iOS volume buttons control PC
+- ✅ **Volume control:** on-screen slider + mute (physical volume buttons can't be intercepted by a browser/PWA on iOS/Android)
 - ✅ **PWA:** Installable on iPhone, works offline
 - ✅ **Auto firewall:** Opens/closes port automatically
 - ✅ **Secure:** PIN auth + self-signed TLS with IP SAN
@@ -138,11 +140,13 @@ npm run build:client  # Rebuild if needed
 ### SSL Certificate Error
 - iPhone Safari → Accept self-signed certificate
 - Certificate includes local IP in SAN for compatibility
+- Certificate is persisted across server restarts (only regenerated if the PC's local IP changes)
 
 ### Can't connect from iPhone
 1. ✅ PC firewall allows port 3000 (auto-managed by app)
 2. ✅ Both devices on same WiFi network
 3. ✅ Accept certificate warning in Safari first time
+4. ✅ If using the installed home screen app, try opening the `https://` URL in Safari directly first (see note above)
 
 ### Windows firewall not opening
 - Run app as Administrator first time

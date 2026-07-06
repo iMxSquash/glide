@@ -14,6 +14,7 @@
     "dependencies": {
         "@nut-tree-fork/nut-js": "^4.2.2",
         "express": "^4.22.1",
+        "loudness": "^0.4.2",
         "qrcode": "^1.5.4",
         "selfsigned": "^5.5.0",
         "socket.io": "^4.8.1"
@@ -45,6 +46,9 @@
                     "**/*"
                 ]
             }
+        ],
+        "asarUnpack": [
+            "**/node_modules/loudness/**"
         ],
         "files": [
             "dist/**/*",

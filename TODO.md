@@ -8,36 +8,34 @@ Les bugs constatés (souris qui saute, clics qui ne partent pas, volume aléatoi
 
 ## 🔴 P0 — Bugs bloquants (les problèmes que tu constates)
 
-### 1. Le clic ne fonctionne pas / pas toujours
-- [ ] **Bug de double émission de clic** — `apps/client-pwa/src/App.tsx:176-195` : lors d'un tap à 2 doigts, le `pointerup` du 1er doigt émet `rightClick` (size===2), puis le `pointerup` du 2e doigt voit size===1 et émet **aussi** `leftClick`. Fix : après avoir émis un clic, ignorer les pointerup restants du même geste (flag `gestureHandledRef` remis à zéro quand `pointersRef.size === 0`).
-- [ ] **Seuil de mouvement trop strict qui annule les taps** — `App.tsx:168` : `hasMovedRef` passe à `true` dès 2px de delta. Un doigt qui tape bouge naturellement de 3-10px → le tap est interprété comme un mouvement et le clic est annulé. Fix : mesurer la distance **cumulée depuis le pointerdown** (pas le delta par event) et utiliser un seuil ~10-15px.
-- [ ] **`pointerDownTimeRef` non fiable pour le tap 2 doigts** — `App.tsx:151-158` : le timestamp n'est posé que pour le 1er doigt. Si le 2e doigt arrive tard, `tapDuration` est faussé. Fix : timestamp du début du geste + timestamps par pointeur.
-- [ ] Ajouter le **retour haptique** (`navigator.vibrate(10)` — Android seulement) et un feedback visuel au clic pour que l'utilisateur sache que le tap est parti.
+### 1. Le clic ne fonctionne pas / pas toujours ✅ Fait
+- [x] **Bug de double émission de clic** — `apps/client-pwa/src/App.tsx:176-195` : lors d'un tap à 2 doigts, le `pointerup` du 1er doigt émet `rightClick` (size===2), puis le `pointerup` du 2e doigt voit size===1 et émet **aussi** `leftClick`. Fix : après avoir émis un clic, ignorer les pointerup restants du même geste (flag `gestureHandledRef` remis à zéro quand `pointersRef.size === 0`).
+- [x] **Seuil de mouvement trop strict qui annule les taps** — `App.tsx:168` : `hasMovedRef` passe à `true` dès 2px de delta. Un doigt qui tape bouge naturellement de 3-10px → le tap est interprété comme un mouvement et le clic est annulé. Fix : mesurer la distance **cumulée depuis le pointerdown** (pas le delta par event) et utiliser un seuil ~10-15px.
+- [x] **`pointerDownTimeRef` non fiable pour le tap 2 doigts** — `App.tsx:151-158` : le timestamp n'est posé que pour le 1er doigt. Si le 2e doigt arrive tard, `tapDuration` est faussé. Fix : timestamp du début du geste + timestamps par pointeur.
+- [x] Ajouter le **retour haptique** (`navigator.vibrate(10)` — Android seulement) et un feedback visuel au clic pour que l'utilisateur sache que le tap est parti.
 
-### 2. La souris est buggée / saccadée
-- [ ] **Flood du socket + aller-retour async par event** — `App.tsx:161-174` émet un `mouseDelta` par `pointermove` (60-120/s), et côté serveur `apps/server-electron/src/main.ts:183-186` chaque delta fait un `await mouse.getPosition()` **puis** `await mouse.setPosition()`. Les events s'empilent, s'exécutent dans le désordre → curseur qui rame et saute. Fix :
+### 2. La souris est buggée / saccadée ✅ Fait
+- [x] **Flood du socket + aller-retour async par event** — `App.tsx:161-174` émet un `mouseDelta` par `pointermove` (60-120/s), et côté serveur `apps/server-electron/src/main.ts:183-186` chaque delta fait un `await mouse.getPosition()` **puis** `await mouse.setPosition()`. Les events s'empilent, s'exécutent dans le désordre → curseur qui rame et saute. Fix :
   - Client : accumuler les deltas et émettre à cadence fixe via `requestAnimationFrame` (~60 Hz max).
   - Serveur : accumuler les deltas reçus et n'appliquer qu'un seul `setPosition` par tick (boucle ~120 Hz), au lieu d'un `getPosition` par message.
-- [ ] **Perte des petits mouvements** — `App.tsx:168` : les deltas < 2px sont jetés → impossible de faire un mouvement précis (le curseur "colle"). Fix : tout envoyer une fois l'accumulation en place, le seuil ne doit servir qu'à la détection tap-vs-move.
-- [ ] **Sensibilité codée en dur** (`* 2` à `App.tsx:165-166`) : ajouter un réglage de sensibilité (slider dans un panneau settings, persisté en `localStorage`) + courbe d'accélération (mouvement rapide = multiplicateur plus fort).
-- [ ] Utiliser `e.movementX/Y` n'est pas dispo sur touch — garder le calcul par delta mais avec `getCoalescedEvents()` quand disponible pour ne rien perdre entre deux frames.
+- [x] **Perte des petits mouvements** — `App.tsx:168` : les deltas < 2px sont jetés → impossible de faire un mouvement précis (le curseur "colle"). Fix : tout envoyer une fois l'accumulation en place, le seuil ne doit servir qu'à la détection tap-vs-move.
+- [x] **Sensibilité codée en dur** (`* 2` à `App.tsx:165-166`) : ajouter un réglage de sensibilité (slider dans un panneau settings, persisté en `localStorage`) + courbe d'accélération (mouvement rapide = multiplicateur plus fort).
+- [x] Utiliser `e.movementX/Y` n'est pas dispo sur touch — garder le calcul par delta mais avec `getCoalescedEvents()` quand disponible pour ne rien perdre entre deux frames.
 
-### 3. Le volume via boutons physiques ne marche pas (ou par hasard)
-- [ ] **Accepter la réalité : c'est impossible en PWA.** `App.tsx:29-42` écoute `keydown` avec `e.key === "VolumeUp"` — les boutons volume matériels **ne génèrent jamais d'événement clavier** dans Safari iOS ni Chrome Android ; ils contrôlent le volume média du téléphone, point. Quand "ça marche parfois", c'est un comportement non spécifié. Décision à prendre pour la v1 :
-  - **Option A (recommandée v1)** : supprimer ce listener mort, assumer les boutons volume **à l'écran** (déjà présents) + slider. Zéro install supplémentaire, marche partout.
-  - **Option B (v2)** : wrapper l'app avec **Capacitor** (plugin `volume-buttons`) → vraies apps iOS/Android qui interceptent les boutons physiques. C'est la seule voie fiable, mais ça implique App Store / Play Store ou sideload.
-- [ ] **Synchroniser le volume affiché avec le volume réel du PC** — `App.tsx:19` : `volume` démarre à 50 et n'est qu'un compteur local, faux dès le départ. Fix : le serveur lit le volume réel (via `powershell` + audio API Windows, ou lib `loudness` npm) et l'envoie au client à la connexion + après chaque changement (event `volumeState`).
-- [ ] **Le slider volume ne fait rien** — `App.tsx:333-342` : le `onChange` met à jour le state local mais n'émet **aucun événement** au serveur. Fix : émettre `setVolume(value)` (debounced) et l'implémenter côté serveur (la lib `loudness` fait ça proprement, mieux que simuler N appuis touche).
-- [ ] Ajouter un bouton **Mute** (`Key.AudioVolMute` existe déjà dans nut-js).
+### 3. Le volume via boutons physiques ne marche pas (ou par hasard) ✅ Fait
+- [x] **Accepter la réalité : c'est impossible en PWA.** `App.tsx:29-42` écoute `keydown` avec `e.key === "VolumeUp"` — les boutons volume matériels **ne génèrent jamais d'événement clavier** dans Safari iOS ni Chrome Android ; ils contrôlent le volume média du téléphone, point. Quand "ça marche parfois", c'est un comportement non spécifié. Décision prise : **Option A** — listener mort supprimé, boutons volume à l'écran + slider (Option B/Capacitor reste en v2).
+- [x] **Synchroniser le volume affiché avec le volume réel du PC** — `App.tsx:19` : `volume` démarre à 50 et n'est qu'un compteur local, faux dès le départ. Fix : le serveur lit le volume réel via la lib `loudness` npm et l'envoie au client à la connexion + après chaque changement (event `volumeState`).
+- [x] **Le slider volume ne fait rien** — `App.tsx:333-342` : le `onChange` met à jour le state local mais n'émet **aucun événement** au serveur. Fix : émet `setVolume(value)` (debounced) implémenté côté serveur via `loudness`.
+- [x] Ajouter un bouton **Mute** (implémenté via `loudness.setMuted`, cohérent avec le reste du volume).
 
-### 4. Connexion fragile (cause probable de "beuggé côté téléphone")
-- [ ] **Certificat auto-signé régénéré à chaque lancement** — `main.ts:117-137` : `selfsigned.generate()` tourne à chaque démarrage → le téléphone doit ré-accepter le certificat à chaque fois, et les connexions WSS échouent silencieusement entre-temps. Fix : générer une fois, persister dans `app.getPath("userData")`, régénérer seulement si l'IP locale a changé (l'IP est dans le SAN).
-- [ ] **PWA installée sur iOS + certificat auto-signé = WSS bloqué.** En mode standalone (installée sur l'écran d'accueil), iOS ne propose pas le dialogue "faire confiance au certificat" → la websocket échoue alors que ça marchait dans Safari. Options : documenter "utiliser Safari, pas l'app installée" pour la v1, ou installer le cert comme profil de confiance (lourd), ou passer en **HTTP + WS simple** (voir point sécurité ci-dessous) — à trancher.
-- [ ] **Aucune gestion de déconnexion côté client** — `App.tsx` n'écoute ni `disconnect` ni `reconnect` : si le WiFi coupe ou l'écran se verrouille, l'UI reste "connectée" mais plus rien ne marche (⚠️ très probablement une grosse part du ressenti "buggé"). Fix : écouter `disconnect` → afficher un bandeau "Reconnexion…", reconnexion auto avec le PIN mémorisé, retour au modal PIN après N échecs.
-- [ ] **Empêcher la mise en veille de l'écran** : ajouter la **Wake Lock API** (`navigator.wakeLock.request("screen")`) quand connecté + re-demander sur `visibilitychange`. Sans ça, le téléphone se verrouille au bout de 30s et coupe la socket.
-- [ ] **Google Fonts bloque le chargement sans internet** — `apps/client-pwa/index.html:9-12` : sur un WiFi local sans accès internet (ou lent), le fetch des fonts retarde/bloque le rendu. Fix : self-héberger les fonts (fichiers woff2 dans `public/`) ou tomber sur `system-ui`.
-- [ ] **Mémoriser la dernière connexion** (IP + PIN en `localStorage`) → à l'ouverture, tentative de reconnexion directe au lieu de retaper le PIN à chaque fois.
-- [ ] `rejectUnauthorized: false` (`App.tsx:61`) ne fait rien dans un navigateur — à supprimer (c'est une option Node). La confiance au certificat doit passer par l'acceptation manuelle dans Safari/Chrome au premier accès HTTPS.
+### 4. Connexion fragile (cause probable de "beuggé côté téléphone") ✅ Fait
+- [x] **Certificat auto-signé régénéré à chaque lancement** — `main.ts:117-137` : `selfsigned.generate()` tourne à chaque démarrage → le téléphone doit ré-accepter le certificat à chaque fois, et les connexions WSS échouent silencieusement entre-temps. Fix : généré une fois, persisté dans `app.getPath("userData")` (`cert.pem`/`key.pem`/`cert-meta.json`), régénéré seulement si l'IP locale a changé.
+- [x] **PWA installée sur iOS + certificat auto-signé = WSS bloqué.** Décision prise pour la v1 : documenter "utiliser Safari, pas l'app installée" (README mis à jour) + détection runtime du mode standalone qui ajoute cette astuce au message d'erreur de connexion.
+- [x] **Aucune gestion de déconnexion côté client** — `App.tsx` n'écoute ni `disconnect` ni `reconnect` : si le WiFi coupe ou l'écran se verrouille, l'UI reste "connectée" mais plus rien ne marche. Fix : bandeau "Reconnexion…" sur `disconnect`, reconnexion auto (socket.io), retour au modal PIN après échec de `reconnect_failed`.
+- [x] **Empêcher la mise en veille de l'écran** : **Wake Lock API** (`navigator.wakeLock.request("screen")`) ajoutée quand connecté + re-demandée sur `visibilitychange`.
+- [x] **Google Fonts bloque le chargement sans internet** — `apps/client-pwa/index.html:9-12` : fix appliqué en tombant sur `system-ui` (Google Fonts retiré).
+- [x] **Mémoriser la dernière connexion** (IP + PIN en `localStorage`) → reconnexion automatique à l'ouverture.
+- [x] `rejectUnauthorized: false` (`App.tsx:61`) supprimé (option Node inutile côté navigateur).
 
 ---
 
@@ -93,9 +91,11 @@ Les bugs constatés (souris qui saute, clics qui ne partent pas, volume aléatoi
 
 ## Ordre d'attaque suggéré
 
-1. **Trackpad** (P0.1 + P0.2) — c'est le cœur du produit : accumulation des deltas + rAF côté client, boucle d'application côté serveur, fix du double-clic et du seuil de tap. Testable immédiatement en dev.
-2. **Robustesse connexion** (P0.4) — cert persistant, wake lock, reconnexion auto, fonts locales.
-3. **Volume** (P0.3) — supprimer le listener clavier mort, brancher le slider sur `loudness`, sync du volume réel.
-4. **Assets & tray** (P1) — icônes PWA + tray + installeur.
+1. ~~**Trackpad** (P0.1 + P0.2) — c'est le cœur du produit : accumulation des deltas + rAF côté client, boucle d'application côté serveur, fix du double-clic et du seuil de tap. Testable immédiatement en dev.~~ ✅ Fait
+2. ~~**Robustesse connexion** (P0.4) — cert persistant, wake lock, reconnexion auto, fonts locales.~~ ✅ Fait
+3. ~~**Volume** (P0.3) — supprimer le listener clavier mort, brancher le slider sur `loudness`, sync du volume réel.~~ ✅ Fait
+4. **Assets & tray** (P1) — icônes PWA + tray + installeur. ← prochaine étape
 5. **Scroll 2 doigts + drag + clavier** (P1).
 6. **Tests devices réels + onboarding** (P2), puis release.
+
+> **P0 entièrement traité.** Testé par build + typecheck (`tsc --noEmit`) sur les deux apps ; reste à valider sur devices réels (cf. P2) avant de passer au P1.

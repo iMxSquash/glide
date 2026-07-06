@@ -5,17 +5,56 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import * as QRCode from "qrcode";
-import { mouse, keyboard, Key } from "@nut-tree-fork/nut-js";
+import { mouse } from "@nut-tree-fork/nut-js";
 import express from "express";
 import { execSync } from "child_process";
+import loudness from "loudness";
 
 const PORT = 3000;
+const MOUSE_TICK_HZ = 120;
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let io: Server | null = null;
 let currentPIN: string = "";
 let localIP: string = "";
 let isServerRunning = false;
+
+// Deltas de souris accumulés entre deux ticks, appliqués en un seul setPosition
+// (au lieu d'un aller-retour getPosition/setPosition par message reçu, qui sature
+// nut-js et fait sauter/ramer le curseur).
+let pendingMouseDelta = { x: 0, y: 0 };
+let cursorPosition: { x: number; y: number } | null = null;
+let isApplyingMousePosition = false;
+
+function startMouseTickLoop(): void {
+  setInterval(async () => {
+    if (isApplyingMousePosition) return;
+
+    if (pendingMouseDelta.x === 0 && pendingMouseDelta.y === 0) {
+      // Rien à appliquer : on invalide la position mise en cache pour se
+      // resynchroniser avec la position réelle au prochain mouvement (au cas
+      // où le curseur ait été déplacé par autre chose entre-temps).
+      cursorPosition = null;
+      return;
+    }
+
+    const delta = pendingMouseDelta;
+    pendingMouseDelta = { x: 0, y: 0 };
+    isApplyingMousePosition = true;
+    try {
+      if (!cursorPosition) {
+        cursorPosition = await mouse.getPosition();
+      }
+      cursorPosition = {
+        x: cursorPosition.x + delta.x,
+        y: cursorPosition.y + delta.y,
+      };
+      await mouse.setPosition(cursorPosition);
+    } finally {
+      isApplyingMousePosition = false;
+    }
+  }, 1000 / MOUSE_TICK_HZ);
+}
 
 /**
  * @returns {string} Local IP address
@@ -39,24 +78,68 @@ function generatePIN(): string {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
-/**
- * @returns {{ key: string; cert: string }} Self-signed certificate
- */
-function generateSelfSignedCert(): { key: string; cert: string } {
-  const certPath = path.join(app.getPath("userData"), "cert.pem");
-  const keyPath = path.join(app.getPath("userData"), "key.pem");
+interface CertificateMeta {
+  ip: string;
+}
 
-  if (!fs.existsSync(certPath) || !fs.existsSync(keyPath)) {
-    const { execSync } = require("child_process");
-    execSync(
-      `openssl req -x509 -newkey rsa:4096 -keyout "${keyPath}" -out "${certPath}" -days 365 -nodes -subj "/CN=localhost"`,
-    );
+/**
+ * Génère (ou réutilise) un certificat TLS persisté dans userData. Régénérer à
+ * chaque lancement forçait le téléphone à ré-accepter le certificat à chaque
+ * fois, avec des connexions WSS qui échouaient silencieusement entre-temps.
+ * On ne régénère que si l'IP locale a changé (elle est dans le SAN du cert).
+ *
+ * @param {string} ip Local IP address to embed in the certificate's SAN
+ * @returns {{ key: string; cert: string }} TLS key/cert pair
+ */
+function getOrCreateCertificate(ip: string): { key: string; cert: string } {
+  const userDataDir = app.getPath("userData");
+  const certPath = path.join(userDataDir, "cert.pem");
+  const keyPath = path.join(userDataDir, "key.pem");
+  const metaPath = path.join(userDataDir, "cert-meta.json");
+
+  if (fs.existsSync(certPath) && fs.existsSync(keyPath) && fs.existsSync(metaPath)) {
+    try {
+      const meta: CertificateMeta = JSON.parse(fs.readFileSync(metaPath, "utf8"));
+      if (meta.ip === ip) {
+        return {
+          key: fs.readFileSync(keyPath, "utf8"),
+          cert: fs.readFileSync(certPath, "utf8"),
+        };
+      }
+      console.log(`IP changée (${meta.ip} → ${ip}), régénération du certificat...`);
+    } catch {
+      console.warn("Métadonnées de certificat illisibles, régénération...");
+    }
   }
 
-  return {
-    key: fs.readFileSync(keyPath, "utf8"),
-    cert: fs.readFileSync(certPath, "utf8"),
-  };
+  const selfsigned = require("selfsigned");
+  const attrs = [
+    { name: "commonName", value: ip },
+    { name: "organizationName", value: "Glide" },
+  ];
+  const pems = selfsigned.generate(attrs, {
+    days: 365,
+    keySize: 2048,
+    algorithm: "sha256",
+    extensions: [
+      {
+        name: "subjectAltName",
+        altNames: [
+          { type: 2, value: "localhost" },
+          { type: 2, value: ip },
+          { type: 7, ip: "127.0.0.1" },
+          { type: 7, ip },
+        ],
+      },
+    ],
+  });
+
+  fs.mkdirSync(userDataDir, { recursive: true });
+  fs.writeFileSync(certPath, pems.cert);
+  fs.writeFileSync(keyPath, pems.private);
+  fs.writeFileSync(metaPath, JSON.stringify({ ip } satisfies CertificateMeta));
+
+  return { key: pems.private, cert: pems.cert };
 }
 
 /**
@@ -109,32 +192,37 @@ function closeFirewallPort(): void {
 }
 
 /**
+ * @returns {{ volume: number; muted: boolean }} Real system volume, read via the
+ * `loudness` lib (not a locally-guessed counter).
+ */
+async function getVolumeState(): Promise<{ volume: number; muted: boolean }> {
+  const [volume, muted] = await Promise.all([
+    loudness.getVolume(),
+    loudness.getMuted(),
+  ]);
+  return { volume, muted };
+}
+
+/**
+ * Reads the real system volume and broadcasts it to every connected client,
+ * so all devices stay in sync with the actual PC volume.
+ */
+async function broadcastVolumeState(): Promise<void> {
+  try {
+    const state = await getVolumeState();
+    io?.emit("volumeState", state);
+  } catch (error) {
+    console.error("Failed to read system volume:", error);
+  }
+}
+
+/**
  * Start Socket.io server (HTTPS with self-signed cert)
  */
 function startServer(): void {
   openFirewallPort();
 
-  const selfsigned = require("selfsigned");
-  const attrs = [
-    { name: "commonName", value: localIP },
-    { name: "organizationName", value: "Glide" },
-  ];
-  const pems = selfsigned.generate(attrs, {
-    days: 365,
-    keySize: 2048,
-    algorithm: "sha256",
-    extensions: [
-      {
-        name: "subjectAltName",
-        altNames: [
-          { type: 2, value: "localhost" },
-          { type: 2, value: localIP },
-          { type: 7, ip: "127.0.0.1" },
-          { type: 7, ip: localIP },
-        ],
-      },
-    ],
-  });
+  const { key, cert } = getOrCreateCertificate(localIP);
 
   const expressApp = express();
 
@@ -155,13 +243,7 @@ function startServer(): void {
     console.warn(`Run 'npm run build:client' first`);
   }
 
-  const httpsServer = https.createServer(
-    {
-      key: pems.private,
-      cert: pems.cert,
-    },
-    expressApp,
-  );
+  const httpsServer = https.createServer({ key, cert }, expressApp);
 
   io = new Server(httpsServer, {
     cors: { origin: "*" },
@@ -180,9 +262,13 @@ function startServer(): void {
   io.on("connection", (socket) => {
     console.log("Client connected");
 
-    socket.on("mouseDelta", async (data: { x: number; y: number }) => {
-      const pos = await mouse.getPosition();
-      await mouse.setPosition({ x: pos.x + data.x, y: pos.y + data.y });
+    getVolumeState()
+      .then((state) => socket.emit("volumeState", state))
+      .catch((error) => console.error("Failed to read system volume:", error));
+
+    socket.on("mouseDelta", (data: { x: number; y: number }) => {
+      pendingMouseDelta.x += data.x;
+      pendingMouseDelta.y += data.y;
     });
 
     socket.on("leftClick", async () => {
@@ -194,11 +280,26 @@ function startServer(): void {
     });
 
     socket.on("volumeUp", async () => {
-      await keyboard.type(Key.AudioVolUp);
+      const current = await loudness.getVolume();
+      await loudness.setVolume(Math.min(100, current + 10));
+      await broadcastVolumeState();
     });
 
     socket.on("volumeDown", async () => {
-      await keyboard.type(Key.AudioVolDown);
+      const current = await loudness.getVolume();
+      await loudness.setVolume(Math.max(0, current - 10));
+      await broadcastVolumeState();
+    });
+
+    socket.on("setVolume", async (value: number) => {
+      await loudness.setVolume(Math.max(0, Math.min(100, Math.round(value))));
+      await broadcastVolumeState();
+    });
+
+    socket.on("toggleMute", async () => {
+      const muted = await loudness.getMuted();
+      await loudness.setMuted(!muted);
+      await broadcastVolumeState();
     });
 
     socket.on("disconnect", () => {
@@ -213,6 +314,8 @@ function startServer(): void {
     console.log(`   PIN:     ${currentPIN}\n`);
     isServerRunning = true;
   });
+
+  startMouseTickLoop();
 }
 
 /**

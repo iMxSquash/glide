@@ -19,8 +19,10 @@ export default {
                 error: '#EF4444'
             },
             fontFamily: {
-                sans: ['Inter', 'sans-serif'],
-                display: ['Manrope', 'sans-serif']
+                // Pas de web fonts : sur un WiFi local sans accès internet, le
+                // fetch Google Fonts retardait/bloquait le rendu.
+                sans: ['-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'system-ui', 'sans-serif'],
+                display: ['-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'system-ui', 'sans-serif']
             },
             borderRadius: {
                 'xl': '12px',
