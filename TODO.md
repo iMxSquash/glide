@@ -1,0 +1,101 @@
+# TODO — Finalisation Glide v1 (Windows + iOS/Android)
+
+Objectif v1 : téléphone (iPhone/Android) = souris à distance fiable pour un PC Windows sur le même WiFi. macOS en v2.
+
+Les bugs constatés (souris qui saute, clics qui ne partent pas, volume aléatoire) ont des causes précises identifiées dans le code — elles sont référencées ci-dessous avec `fichier:ligne`.
+
+---
+
+## 🔴 P0 — Bugs bloquants (les problèmes que tu constates)
+
+### 1. Le clic ne fonctionne pas / pas toujours
+- [ ] **Bug de double émission de clic** — `apps/client-pwa/src/App.tsx:176-195` : lors d'un tap à 2 doigts, le `pointerup` du 1er doigt émet `rightClick` (size===2), puis le `pointerup` du 2e doigt voit size===1 et émet **aussi** `leftClick`. Fix : après avoir émis un clic, ignorer les pointerup restants du même geste (flag `gestureHandledRef` remis à zéro quand `pointersRef.size === 0`).
+- [ ] **Seuil de mouvement trop strict qui annule les taps** — `App.tsx:168` : `hasMovedRef` passe à `true` dès 2px de delta. Un doigt qui tape bouge naturellement de 3-10px → le tap est interprété comme un mouvement et le clic est annulé. Fix : mesurer la distance **cumulée depuis le pointerdown** (pas le delta par event) et utiliser un seuil ~10-15px.
+- [ ] **`pointerDownTimeRef` non fiable pour le tap 2 doigts** — `App.tsx:151-158` : le timestamp n'est posé que pour le 1er doigt. Si le 2e doigt arrive tard, `tapDuration` est faussé. Fix : timestamp du début du geste + timestamps par pointeur.
+- [ ] Ajouter le **retour haptique** (`navigator.vibrate(10)` — Android seulement) et un feedback visuel au clic pour que l'utilisateur sache que le tap est parti.
+
+### 2. La souris est buggée / saccadée
+- [ ] **Flood du socket + aller-retour async par event** — `App.tsx:161-174` émet un `mouseDelta` par `pointermove` (60-120/s), et côté serveur `apps/server-electron/src/main.ts:183-186` chaque delta fait un `await mouse.getPosition()` **puis** `await mouse.setPosition()`. Les events s'empilent, s'exécutent dans le désordre → curseur qui rame et saute. Fix :
+  - Client : accumuler les deltas et émettre à cadence fixe via `requestAnimationFrame` (~60 Hz max).
+  - Serveur : accumuler les deltas reçus et n'appliquer qu'un seul `setPosition` par tick (boucle ~120 Hz), au lieu d'un `getPosition` par message.
+- [ ] **Perte des petits mouvements** — `App.tsx:168` : les deltas < 2px sont jetés → impossible de faire un mouvement précis (le curseur "colle"). Fix : tout envoyer une fois l'accumulation en place, le seuil ne doit servir qu'à la détection tap-vs-move.
+- [ ] **Sensibilité codée en dur** (`* 2` à `App.tsx:165-166`) : ajouter un réglage de sensibilité (slider dans un panneau settings, persisté en `localStorage`) + courbe d'accélération (mouvement rapide = multiplicateur plus fort).
+- [ ] Utiliser `e.movementX/Y` n'est pas dispo sur touch — garder le calcul par delta mais avec `getCoalescedEvents()` quand disponible pour ne rien perdre entre deux frames.
+
+### 3. Le volume via boutons physiques ne marche pas (ou par hasard)
+- [ ] **Accepter la réalité : c'est impossible en PWA.** `App.tsx:29-42` écoute `keydown` avec `e.key === "VolumeUp"` — les boutons volume matériels **ne génèrent jamais d'événement clavier** dans Safari iOS ni Chrome Android ; ils contrôlent le volume média du téléphone, point. Quand "ça marche parfois", c'est un comportement non spécifié. Décision à prendre pour la v1 :
+  - **Option A (recommandée v1)** : supprimer ce listener mort, assumer les boutons volume **à l'écran** (déjà présents) + slider. Zéro install supplémentaire, marche partout.
+  - **Option B (v2)** : wrapper l'app avec **Capacitor** (plugin `volume-buttons`) → vraies apps iOS/Android qui interceptent les boutons physiques. C'est la seule voie fiable, mais ça implique App Store / Play Store ou sideload.
+- [ ] **Synchroniser le volume affiché avec le volume réel du PC** — `App.tsx:19` : `volume` démarre à 50 et n'est qu'un compteur local, faux dès le départ. Fix : le serveur lit le volume réel (via `powershell` + audio API Windows, ou lib `loudness` npm) et l'envoie au client à la connexion + après chaque changement (event `volumeState`).
+- [ ] **Le slider volume ne fait rien** — `App.tsx:333-342` : le `onChange` met à jour le state local mais n'émet **aucun événement** au serveur. Fix : émettre `setVolume(value)` (debounced) et l'implémenter côté serveur (la lib `loudness` fait ça proprement, mieux que simuler N appuis touche).
+- [ ] Ajouter un bouton **Mute** (`Key.AudioVolMute` existe déjà dans nut-js).
+
+### 4. Connexion fragile (cause probable de "beuggé côté téléphone")
+- [ ] **Certificat auto-signé régénéré à chaque lancement** — `main.ts:117-137` : `selfsigned.generate()` tourne à chaque démarrage → le téléphone doit ré-accepter le certificat à chaque fois, et les connexions WSS échouent silencieusement entre-temps. Fix : générer une fois, persister dans `app.getPath("userData")`, régénérer seulement si l'IP locale a changé (l'IP est dans le SAN).
+- [ ] **PWA installée sur iOS + certificat auto-signé = WSS bloqué.** En mode standalone (installée sur l'écran d'accueil), iOS ne propose pas le dialogue "faire confiance au certificat" → la websocket échoue alors que ça marchait dans Safari. Options : documenter "utiliser Safari, pas l'app installée" pour la v1, ou installer le cert comme profil de confiance (lourd), ou passer en **HTTP + WS simple** (voir point sécurité ci-dessous) — à trancher.
+- [ ] **Aucune gestion de déconnexion côté client** — `App.tsx` n'écoute ni `disconnect` ni `reconnect` : si le WiFi coupe ou l'écran se verrouille, l'UI reste "connectée" mais plus rien ne marche (⚠️ très probablement une grosse part du ressenti "buggé"). Fix : écouter `disconnect` → afficher un bandeau "Reconnexion…", reconnexion auto avec le PIN mémorisé, retour au modal PIN après N échecs.
+- [ ] **Empêcher la mise en veille de l'écran** : ajouter la **Wake Lock API** (`navigator.wakeLock.request("screen")`) quand connecté + re-demander sur `visibilitychange`. Sans ça, le téléphone se verrouille au bout de 30s et coupe la socket.
+- [ ] **Google Fonts bloque le chargement sans internet** — `apps/client-pwa/index.html:9-12` : sur un WiFi local sans accès internet (ou lent), le fetch des fonts retarde/bloque le rendu. Fix : self-héberger les fonts (fichiers woff2 dans `public/`) ou tomber sur `system-ui`.
+- [ ] **Mémoriser la dernière connexion** (IP + PIN en `localStorage`) → à l'ouverture, tentative de reconnexion directe au lieu de retaper le PIN à chaque fois.
+- [ ] `rejectUnauthorized: false` (`App.tsx:61`) ne fait rien dans un navigateur — à supprimer (c'est une option Node). La confiance au certificat doit passer par l'acceptation manuelle dans Safari/Chrome au premier accès HTTPS.
+
+---
+
+## 🟠 P1 — Indispensable pour une v1 complète
+
+### Serveur Windows
+- [ ] **Icône de tray invisible** — `main.ts:222` : `nativeImage.createEmpty()` → l'icône dans la barre des tâches Windows est **invisible**, l'app semble fantôme. Créer une vraie icône 16/32px et la charger.
+- [ ] **Assets manquants pour le build** : `apps/server-electron/assets/icon.ico` est référencé par electron-builder (`package.json` → `win.icon`) mais le dossier `assets/` **n'existe pas**. Idem pour la PWA : `icon-192.png`, `icon-512.png`, `favicon.ico`, `apple-touch-icon.png` référencés dans `vite.config.ts:15,24-35` mais **aucun dossier `public/` n'existe** → PWA non installable proprement (icône générique). Créer les icônes (une source SVG → export toutes tailles).
+- [ ] **"Pause Server" ne fait rien** — `main.ts:252-257` : le menu tray inverse juste un booléen. Soit l'implémenter (déconnecter les clients + refuser les connexions), soit le retirer pour la v1.
+- [ ] **Code mort à supprimer** — `main.ts:45-60` : `generateSelfSignedCert()` (openssl) n'est jamais appelée et ne marcherait pas sur Windows.
+- [ ] **Single instance lock** : `app.requestSingleInstanceLock()` pour éviter deux serveurs qui se battent sur le port 3000.
+- [ ] **Gérer le port déjà occupé** : si 3000 est pris, essayer 3001+ et l'afficher dans la fenêtre PIN (et adapter la détection `port === "3000"` codée en dur dans `App.tsx:49-52`).
+- [ ] **Détecter le changement d'IP / multi-interfaces** — `main.ts:23-33` : `getLocalIP()` prend la première IPv4 non-interne trouvée (peut être une interface virtuelle VPN/VirtualBox). Filtrer les interfaces virtuelles connues, et si plusieurs candidates, les lister dans la fenêtre PIN.
+- [ ] **Rate-limit sur l'auth PIN** (`main.ts:171-178`) : bloquer une IP après ~5 PIN faux (sinon brute-force trivial des 6 chiffres en local).
+- [ ] Événement `connected`/`clientCount` vers le tray + fenêtre PIN ("1 appareil connecté").
+
+### Client PWA
+- [ ] **Scroll à 2 doigts** — indispensable pour une télécommande souris : drag à 2 doigts = `mouse.scrollDown/scrollUp` (nut-js le supporte). Actuellement 2 doigts = rien (`App.tsx:163` bloque si size !== 1).
+- [ ] **Drag & drop** : double-tap-and-hold = `mouse.pressButton` → déplacer → relâcher = `mouse.releaseButton`.
+- [ ] **Clavier texte** : un bouton qui ouvre un input → envoie les frappes au PC (`keyboard.type`). Même basique, ça change tout pour taper une URL/recherche sur le PC.
+- [ ] **Écran de connexion : parcours QR d'abord** : le scan QR (`ip+pin` déjà dans le QR, `main.ts:295`) devrait être le chemin principal, la saisie manuelle le fallback. Après scan, connexion directe sans saisie.
+- [ ] Gérer l'erreur "Invalid PIN" distinctement de "serveur injoignable" (`App.tsx:73-79` affiche le même `alert` générique — remplacer les `alert()` par des messages dans l'UI).
+- [ ] Bouton **Déconnexion** (aucun moyen de revenir au modal PIN actuellement).
+- [ ] Empêcher le pull-to-refresh / swipe-back iOS sur le trackpad (`overscroll-behavior: none`, déjà partiellement couvert par `touch-none`, à vérifier sur device).
+
+### Sécurité (décision à prendre)
+- [ ] Trancher **HTTPS auto-signé vs HTTP+WS local** : le HTTPS auto-signé cause la friction certificat (surtout PWA iOS, cf. P0). Alternative assumée pour du 100% LAN : HTTP simple + PIN, en documentant que le trafic n'est pas chiffré sur le WiFi local. Ou garder HTTPS et documenter le flow d'acceptation. → Cette décision conditionne l'UX d'onboarding entière.
+- [ ] Ne pas afficher le PIN en clair dans l'UI connectée (`App.tsx:306`) — inutile et sensible en screenshot.
+
+---
+
+## 🟡 P2 — Finition v1
+
+- [ ] **Tests sur devices réels** : matrice iPhone (Safari + PWA installée) × Android (Chrome + PWA installée) × Windows 10/11. Vérifier : latence souris, taps, scroll, reconnexion après verrouillage écran, reconnexion après mise en veille PC.
+- [ ] **Onboarding première utilisation** (côté PC : fenêtre PIN → étapes "1. Scanne le QR, 2. Accepte le certificat, 3. Entre le PIN") — actuellement il faut deviner.
+- [ ] **Page d'erreur certificat** : si la PWA détecte que la socket échoue en WSS, afficher un guide "ouvre d'abord https://IP:3000 dans Safari et accepte le certificat".
+- [ ] Nettoyage : `libs/shared-types` et `libs/shared-ui` sont quasi vides — soit y mettre les types des événements socket (`mouseDelta`, `leftClick`, … partagés client/serveur, ça éviterait les typos d'events), soit les supprimer.
+- [ ] Typer les événements Socket.io des deux côtés (interfaces `ClientToServerEvents` / `ServerToClientEvents` de socket.io) à partir de `libs/shared-types`.
+- [ ] `@types/express` v5 avec express v4 (`apps/server-electron/package.json`) → aligner sur `@types/express@^4`.
+- [ ] Vérifier le **service worker** : `registerType: "autoUpdate"` OK, mais tester qu'une vieille version cachée de la PWA ne reste pas servie après une mise à jour du serveur (versionner ou `skipWaiting`).
+- [ ] Compléter le README : la section iPhone existe, ajouter Android (Chrome → menu → "Ajouter à l'écran d'accueil").
+- [ ] CI : vérifier que `deploy-pwa.yml` et `release.yml` passent avec les nouveaux assets/icônes.
+
+## 🔵 v2 (hors scope v1, à ne pas commencer avant)
+
+- [ ] Support **macOS** serveur (nut-js fonctionne, gérer les permissions Accessibilité macOS + firewall).
+- [ ] Wrapper **Capacitor** iOS/Android pour les boutons volume physiques + meilleure intégration (cf. P0.3 option B).
+- [ ] Découverte auto du serveur sur le LAN (mDNS/Bonjour côté Electron + tentative de connexion sur les IP du sous-réseau côté client — un navigateur ne peut pas faire de mDNS, donc scan limité ou QR reste le chemin principal).
+- [ ] Gestes avancés : pinch-to-zoom, 3 doigts = alt-tab, geste médias (play/pause, next).
+- [ ] Multi-clients / kick d'un client depuis le tray.
+
+---
+
+## Ordre d'attaque suggéré
+
+1. **Trackpad** (P0.1 + P0.2) — c'est le cœur du produit : accumulation des deltas + rAF côté client, boucle d'application côté serveur, fix du double-clic et du seuil de tap. Testable immédiatement en dev.
+2. **Robustesse connexion** (P0.4) — cert persistant, wake lock, reconnexion auto, fonts locales.
+3. **Volume** (P0.3) — supprimer le listener clavier mort, brancher le slider sur `loudness`, sync du volume réel.
+4. **Assets & tray** (P1) — icônes PWA + tray + installeur.
+5. **Scroll 2 doigts + drag + clavier** (P1).
+6. **Tests devices réels + onboarding** (P2), puis release.
