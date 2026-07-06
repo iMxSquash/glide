@@ -41,16 +41,16 @@ Les bugs constatés (souris qui saute, clics qui ne partent pas, volume aléatoi
 
 ## 🟠 P1 — Indispensable pour une v1 complète
 
-### Serveur Windows
-- [ ] **Icône de tray invisible** — `main.ts:222` : `nativeImage.createEmpty()` → l'icône dans la barre des tâches Windows est **invisible**, l'app semble fantôme. Créer une vraie icône 16/32px et la charger.
-- [ ] **Assets manquants pour le build** : `apps/server-electron/assets/icon.ico` est référencé par electron-builder (`package.json` → `win.icon`) mais le dossier `assets/` **n'existe pas**. Idem pour la PWA : `icon-192.png`, `icon-512.png`, `favicon.ico`, `apple-touch-icon.png` référencés dans `vite.config.ts:15,24-35` mais **aucun dossier `public/` n'existe** → PWA non installable proprement (icône générique). Créer les icônes (une source SVG → export toutes tailles).
-- [ ] **"Pause Server" ne fait rien** — `main.ts:252-257` : le menu tray inverse juste un booléen. Soit l'implémenter (déconnecter les clients + refuser les connexions), soit le retirer pour la v1.
-- [ ] **Code mort à supprimer** — `main.ts:45-60` : `generateSelfSignedCert()` (openssl) n'est jamais appelée et ne marcherait pas sur Windows.
-- [ ] **Single instance lock** : `app.requestSingleInstanceLock()` pour éviter deux serveurs qui se battent sur le port 3000.
-- [ ] **Gérer le port déjà occupé** : si 3000 est pris, essayer 3001+ et l'afficher dans la fenêtre PIN (et adapter la détection `port === "3000"` codée en dur dans `App.tsx:49-52`).
-- [ ] **Détecter le changement d'IP / multi-interfaces** — `main.ts:23-33` : `getLocalIP()` prend la première IPv4 non-interne trouvée (peut être une interface virtuelle VPN/VirtualBox). Filtrer les interfaces virtuelles connues, et si plusieurs candidates, les lister dans la fenêtre PIN.
-- [ ] **Rate-limit sur l'auth PIN** (`main.ts:171-178`) : bloquer une IP après ~5 PIN faux (sinon brute-force trivial des 6 chiffres en local).
-- [ ] Événement `connected`/`clientCount` vers le tray + fenêtre PIN ("1 appareil connecté").
+### Serveur Windows ✅ Fait
+- [x] **Icône de tray invisible** — `main.ts:222` : `nativeImage.createEmpty()` → l'icône dans la barre des tâches Windows est **invisible**, l'app semble fantôme. Vraie icône générée (curseur mint sur fond sombre) et chargée depuis `assets/tray-icon.png` (+ `@2x` pour l'écran HiDPI).
+- [x] **Assets manquants pour le build** : `apps/server-electron/assets/icon.ico` est référencé par electron-builder (`package.json` → `win.icon`) mais le dossier `assets/` **n'existe pas**. Idem pour la PWA : `icon-192.png`, `icon-512.png`, `favicon.ico`, `apple-touch-icon.png` référencés dans `vite.config.ts:15,24-35` mais **aucun dossier `public/` n'existe** → PWA non installable proprement (icône générique). Icônes générées depuis une source SVG (toutes tailles) et placées dans `apps/server-electron/assets/` et `apps/client-pwa/public/`.
+- [x] **"Pause Server" ne fait rien** — `main.ts:252-257` : le menu tray inverse juste un booléen. Implémenté : `setServerRunning()` refuse les nouvelles connexions (middleware `io.use`) et déconnecte tous les clients actifs (`io.disconnectSockets(true)`).
+- [x] **Code mort à supprimer** — `main.ts:45-60` : `generateSelfSignedCert()` (openssl) n'est jamais appelée et ne marcherait pas sur Windows. (Supprimé lors du fix P0.4 sur la persistance du certificat.)
+- [x] **Single instance lock** : `app.requestSingleInstanceLock()` pour éviter deux serveurs qui se battent sur le port 3000.
+- [x] **Gérer le port déjà occupé** : si 3000 est pris, le serveur essaie 3001, 3002... (jusqu'à 10 tentatives) et affiche le port réel dans la fenêtre PIN/tray/QR code. Le client accepte désormais `ip` ou `ip:port` (saisie manuelle, QR, dernière connexion mémorisée) au lieu de coder `:3000` en dur.
+- [x] **Détecter le changement d'IP / multi-interfaces** — `main.ts:23-33` : `getLocalIP()` filtre maintenant les interfaces virtuelles connues (VirtualBox, VMware, vEthernet, Docker, WSL, Tailscale, ZeroTier, VPN...) et liste les autres IP candidates dans la fenêtre PIN si plusieurs existent.
+- [x] **Rate-limit sur l'auth PIN** (`main.ts:171-178`) : une IP est bloquée 5 minutes après 5 PIN faux.
+- [x] Événement `connected`/`clientCount` vers le tray + fenêtre PIN ("N appareil(s) connecté(s)").
 
 ### Client PWA
 - [ ] **Scroll à 2 doigts** — indispensable pour une télécommande souris : drag à 2 doigts = `mouse.scrollDown/scrollUp` (nut-js le supporte). Actuellement 2 doigts = rien (`App.tsx:163` bloque si size !== 1).

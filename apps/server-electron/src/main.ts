@@ -10,14 +10,29 @@ import express from "express";
 import { execSync } from "child_process";
 import loudness from "loudness";
 
-const PORT = 3000;
+const DEFAULT_PORT = 3000;
+const MAX_PORT_ATTEMPTS = 10;
 const MOUSE_TICK_HZ = 120;
+const PIN_MAX_ATTEMPTS = 5;
+const PIN_BLOCK_DURATION_MS = 5 * 60 * 1000;
+
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
+let updateTrayMenu: (() => void) | null = null;
 let io: Server | null = null;
 let currentPIN: string = "";
 let localIP: string = "";
+let networkCandidates: string[] = [];
+let activePort = DEFAULT_PORT;
 let isServerRunning = false;
+let connectedClientCount = 0;
+
+// Une seule instance du serveur à la fois (sinon deux process se battent sur
+// le même port et l'un des deux échoue silencieusement).
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+}
 
 // Deltas de souris accumulés entre deux ticks, appliqués en un seul setPosition
 // (au lieu d'un aller-retour getPosition/setPosition par message reçu, qui sature
@@ -56,13 +71,58 @@ function startMouseTickLoop(): void {
   }, 1000 / MOUSE_TICK_HZ);
 }
 
+// Interfaces virtuelles connues (VPN, machines virtuelles, conteneurs...) à
+// exclure de la détection auto, sinon `getLocalIP()` peut renvoyer une IP
+// injoignable depuis le téléphone (ex: adaptateur VirtualBox/VMware).
+const VIRTUAL_INTERFACE_PATTERNS = [
+  /virtualbox/i,
+  /vmware/i,
+  /vethernet/i,
+  /hyper-v/i,
+  /docker/i,
+  /wsl/i,
+  /tailscale/i,
+  /zerotier/i,
+  /loopback/i,
+  /^utun/i,
+  /^tun\d*/i,
+  /^tap\d*/i,
+];
+
+function isVirtualInterfaceName(name: string): boolean {
+  return VIRTUAL_INTERFACE_PATTERNS.some((pattern) => pattern.test(name));
+}
+
+/**
+ * @returns {string[]} Toutes les IPv4 locales non-internes, hors interfaces
+ * virtuelles connues.
+ */
+function getNetworkCandidates(): string[] {
+  const interfaces = os.networkInterfaces();
+  const candidates: string[] = [];
+  for (const name of Object.keys(interfaces)) {
+    if (isVirtualInterfaceName(name)) continue;
+    for (const iface of interfaces[name] ?? []) {
+      if (iface.family === "IPv4" && !iface.internal) {
+        candidates.push(iface.address);
+      }
+    }
+  }
+  return candidates;
+}
+
 /**
  * @returns {string} Local IP address
  */
 function getLocalIP(): string {
+  const candidates = getNetworkCandidates();
+  if (candidates.length > 0) return candidates[0];
+
+  // Repli : aucune interface "réelle" détectée, on retente sans filtrer les
+  // interfaces virtuelles plutôt que de renvoyer localhost.
   const interfaces = os.networkInterfaces();
   for (const name of Object.keys(interfaces)) {
-    for (const iface of interfaces[name]!) {
+    for (const iface of interfaces[name] ?? []) {
       if (iface.family === "IPv4" && !iface.internal) {
         return iface.address;
       }
@@ -158,23 +218,25 @@ function execCommand(cmd: string): boolean {
 
 /**
  * Open firewall port on Windows
+ * @param {number} port Port to open (the port actually bound, may differ from
+ * DEFAULT_PORT if it was already taken)
  */
-function openFirewallPort(): void {
+function openFirewallPort(port: number): void {
   if (process.platform !== "win32") return;
 
-  console.log(`Opening port ${PORT} in Windows Firewall...`);
-  const ruleName = `Glide_${PORT}`;
+  console.log(`Opening port ${port} in Windows Firewall...`);
+  const ruleName = `Glide_${port}`;
 
   // Delete existing rule
   execCommand(`netsh advfirewall firewall delete rule name="${ruleName}"`);
 
   // Add new rule
   const success = execCommand(
-    `netsh advfirewall firewall add rule name="${ruleName}" dir=in action=allow protocol=TCP localport=${PORT}`,
+    `netsh advfirewall firewall add rule name="${ruleName}" dir=in action=allow protocol=TCP localport=${port}`,
   );
 
   if (success) {
-    console.log(`✅ Port ${PORT} opened in Windows Firewall`);
+    console.log(`✅ Port ${port} opened in Windows Firewall`);
   } else {
     console.warn(`⚠️  Could not open port. May need administrator rights.`);
   }
@@ -182,12 +244,13 @@ function openFirewallPort(): void {
 
 /**
  * Close firewall port on Windows
+ * @param {number} port Port that was opened by `openFirewallPort`
  */
-function closeFirewallPort(): void {
+function closeFirewallPort(port: number): void {
   if (process.platform !== "win32") return;
 
-  console.log(`Closing port ${PORT} in Windows Firewall...`);
-  const ruleName = `Glide_${PORT}`;
+  console.log(`Closing port ${port} in Windows Firewall...`);
+  const ruleName = `Glide_${port}`;
   execCommand(`netsh advfirewall firewall delete rule name="${ruleName}"`);
 }
 
@@ -217,11 +280,94 @@ async function broadcastVolumeState(): Promise<void> {
 }
 
 /**
+ * Reflects the number of connected devices in the tray tooltip/menu and, if
+ * open, the PIN window ("1 appareil connecté").
+ * @param {number} count Number of currently connected sockets
+ */
+function setConnectedClientCount(count: number): void {
+  connectedClientCount = count;
+
+  const label =
+    count > 0
+      ? `${count} appareil${count > 1 ? "s" : ""} connecté${count > 1 ? "s" : ""}`
+      : "Aucun appareil connecté";
+
+  tray?.setToolTip(`Glide - Remote PC Control${count > 0 ? ` (${label})` : ""}`);
+  updateTrayMenu?.();
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents
+      .executeJavaScript(
+        `(() => { const el = document.getElementById('clientCount'); if (el) el.textContent = ${JSON.stringify(label)}; })();`,
+      )
+      .catch(() => {});
+  }
+}
+
+/**
+ * Pauses/resumes the server: while paused, new connections are refused and
+ * every currently connected client is disconnected.
+ * @param {boolean} running Whether the server should accept connections
+ */
+function setServerRunning(running: boolean): void {
+  isServerRunning = running;
+  if (!running) {
+    io?.disconnectSockets(true);
+  }
+  updateTrayMenu?.();
+}
+
+interface PinAttemptRecord {
+  count: number;
+  blockedUntil: number;
+}
+
+// Bloque une IP après quelques PIN faux, sinon un brute-force du code à 6
+// chiffres en local est trivial.
+const pinAttempts = new Map<string, PinAttemptRecord>();
+
+function registerFailedPinAttempt(ip: string, existing?: PinAttemptRecord): void {
+  const count = (existing?.count ?? 0) + 1;
+  const blockedUntil =
+    count >= PIN_MAX_ATTEMPTS ? Date.now() + PIN_BLOCK_DURATION_MS : 0;
+  pinAttempts.set(ip, { count, blockedUntil });
+}
+
+/**
+ * Binds the HTTPS server, retrying on the next port if the current one is
+ * already taken (instead of crashing silently on EADDRINUSE).
+ * @param {https.Server} httpsServer Server to bind
+ * @param {number} port First port to try
+ * @param {number} attempt Retry counter (internal)
+ * @returns {Promise<number>} The port that was actually bound
+ */
+function listenWithPortFallback(
+  httpsServer: https.Server,
+  port: number,
+  attempt = 0,
+): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const onError = (err: NodeJS.ErrnoException) => {
+      if (err.code === "EADDRINUSE" && attempt < MAX_PORT_ATTEMPTS) {
+        console.warn(`⚠️  Port ${port} occupé, essai sur ${port + 1}...`);
+        resolve(listenWithPortFallback(httpsServer, port + 1, attempt + 1));
+      } else {
+        reject(err);
+      }
+    };
+
+    httpsServer.once("error", onError);
+    httpsServer.listen(port, "0.0.0.0", () => {
+      httpsServer.removeListener("error", onError);
+      resolve(port);
+    });
+  });
+}
+
+/**
  * Start Socket.io server (HTTPS with self-signed cert)
  */
-function startServer(): void {
-  openFirewallPort();
-
+async function startServer(): Promise<void> {
   const { key, cert } = getOrCreateCertificate(localIP);
 
   const expressApp = express();
@@ -251,16 +397,33 @@ function startServer(): void {
   });
 
   io.use((socket, next) => {
-    const pin = socket.handshake.auth.pin;
-    if (pin === currentPIN) {
-      next();
-    } else {
-      next(new Error("Invalid PIN"));
+    if (!isServerRunning) {
+      next(new Error("Server paused"));
+      return;
     }
+
+    const ip = socket.handshake.address;
+    const now = Date.now();
+    const record = pinAttempts.get(ip);
+
+    if (record && record.blockedUntil > now) {
+      next(new Error("Too many attempts, try again later"));
+      return;
+    }
+
+    if (socket.handshake.auth.pin === currentPIN) {
+      pinAttempts.delete(ip);
+      next();
+      return;
+    }
+
+    registerFailedPinAttempt(ip, record);
+    next(new Error("Invalid PIN"));
   });
 
   io.on("connection", (socket) => {
     console.log("Client connected");
+    setConnectedClientCount(connectedClientCount + 1);
 
     getVolumeState()
       .then((state) => socket.emit("volumeState", state))
@@ -304,16 +467,18 @@ function startServer(): void {
 
     socket.on("disconnect", () => {
       console.log("Client disconnected");
+      setConnectedClientCount(Math.max(0, connectedClientCount - 1));
     });
   });
 
-  httpsServer.listen(PORT, "0.0.0.0", () => {
-    console.log(`\n🚀 Glide server running`);
-    console.log(`   Local:   https://0.0.0.0:${PORT}`);
-    console.log(`   Network: https://${localIP}:${PORT}`);
-    console.log(`   PIN:     ${currentPIN}\n`);
-    isServerRunning = true;
-  });
+  activePort = await listenWithPortFallback(httpsServer, DEFAULT_PORT);
+  openFirewallPort(activePort);
+  isServerRunning = true;
+
+  console.log(`\n🚀 Glide server running`);
+  console.log(`   Local:   https://0.0.0.0:${activePort}`);
+  console.log(`   Network: https://${localIP}:${activePort}`);
+  console.log(`   PIN:     ${currentPIN}\n`);
 
   startMouseTickLoop();
 }
@@ -322,7 +487,12 @@ function startServer(): void {
  * Create tray icon
  */
 function createTray(): void {
-  const icon = nativeImage.createEmpty();
+  // Même chemin relatif en dev et packagé : `assets/` est au même niveau que
+  // `dist/` dans les deux cas (bundlé via `files` dans electron-builder).
+  const trayIconPath = path.join(__dirname, "..", "..", "assets", "tray-icon.png");
+  const icon = fs.existsSync(trayIconPath)
+    ? nativeImage.createFromPath(trayIconPath)
+    : nativeImage.createEmpty();
   tray = new Tray(icon);
   tray.setToolTip("Glide - Remote PC Control");
 
@@ -335,13 +505,22 @@ function createTray(): void {
   });
 
   const updateMenu = () => {
+    const clientLabel =
+      connectedClientCount > 0
+        ? `${connectedClientCount} appareil${connectedClientCount > 1 ? "s" : ""} connecté${connectedClientCount > 1 ? "s" : ""}`
+        : "Aucun appareil connecté";
+
     const contextMenu = Menu.buildFromTemplate([
       {
         label: `PIN: ${currentPIN}`,
         enabled: false,
       },
       {
-        label: `IP: ${localIP}:3000`,
+        label: `IP: ${localIP}:${activePort}`,
+        enabled: false,
+      },
+      {
+        label: clientLabel,
         enabled: false,
       },
       { type: "separator" },
@@ -354,8 +533,7 @@ function createTray(): void {
       {
         label: isServerRunning ? "Pause Server" : "Resume Server",
         click: () => {
-          isServerRunning = !isServerRunning;
-          updateMenu();
+          setServerRunning(!isServerRunning);
         },
       },
       { type: "separator" },
@@ -369,6 +547,7 @@ function createTray(): void {
     tray?.setContextMenu(contextMenu);
   };
 
+  updateTrayMenu = updateMenu;
   updateMenu();
 }
 
@@ -395,11 +574,18 @@ async function showPINWindow(): Promise<void> {
     },
   });
 
-  const qrData = JSON.stringify({ ip: localIP, pin: currentPIN });
+  const qrData = JSON.stringify({ ip: localIP, pin: currentPIN, port: activePort });
   const qrCodeDataURL = await QRCode.toDataURL(qrData, {
     width: 250,
     color: { dark: "#6EE7B7", light: "#0E0F12" },
   });
+
+  const clientLabel =
+    connectedClientCount > 0
+      ? `${connectedClientCount} appareil${connectedClientCount > 1 ? "s" : ""} connecté${connectedClientCount > 1 ? "s" : ""}`
+      : "Aucun appareil connecté";
+
+  const otherIPs = networkCandidates.filter((ip) => ip !== localIP);
 
   const htmlContent = `<!DOCTYPE html>
 <html>
@@ -469,7 +655,13 @@ async function showPINWindow(): Promise<void> {
     <h1>Glide Server</h1>
     <div class="pin">${currentPIN}</div>
     <p class="info">Open on iPhone:</p>
-    <p class="info" style="color: #6EE7B7; font-size: 16px; font-weight: 500;">https://${localIP}:3000</p>
+    <p class="info" style="color: #6EE7B7; font-size: 16px; font-weight: 500;">https://${localIP}:${activePort}</p>
+    ${
+      otherIPs.length > 0
+        ? `<p class="info" style="font-size: 12px;">Autre IP possible si celle-ci ne fonctionne pas : ${otherIPs.join(", ")}</p>`
+        : ""
+    }
+    <p class="info" id="clientCount" style="font-size: 12px;">${clientLabel}</p>
     <button id="toggleBtn">Show QR Code</button>
     <div id="qrContainer">
       <img src="${qrCodeDataURL}" alt="QR Code" />
@@ -512,29 +704,36 @@ async function showPINWindow(): Promise<void> {
   });
 }
 
-app.whenReady().then(() => {
-  localIP = getLocalIP();
-  currentPIN = generatePIN();
-  startServer();
-  createTray();
-  showPINWindow();
+if (gotSingleInstanceLock) {
+  app.on("second-instance", () => {
+    showPINWindow();
+  });
 
-  // Hide from dock on macOS (run in background only)
-  if (process.platform === "darwin") {
-    app.dock.hide();
-  }
-});
+  app.whenReady().then(async () => {
+    networkCandidates = getNetworkCandidates();
+    localIP = getLocalIP();
+    currentPIN = generatePIN();
+    await startServer();
+    createTray();
+    showPINWindow();
 
-app.on("window-all-closed", () => {
-  // Keep app running in tray
-});
+    // Hide from dock on macOS (run in background only)
+    if (process.platform === "darwin") {
+      app.dock?.hide();
+    }
+  });
 
-app.on("before-quit", () => {
-  // Close firewall port on Windows before quitting
-  closeFirewallPort();
+  app.on("window-all-closed", () => {
+    // Keep app running in tray
+  });
 
-  // Allow actual quit
-  if (mainWindow) {
-    mainWindow.removeAllListeners("close");
-  }
-});
+  app.on("before-quit", () => {
+    // Close firewall port on Windows before quitting
+    closeFirewallPort(activePort);
+
+    // Allow actual quit
+    if (mainWindow) {
+      mainWindow.removeAllListeners("close");
+    }
+  });
+}

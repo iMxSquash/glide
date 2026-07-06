@@ -17,6 +17,20 @@ const DEFAULT_SENSITIVITY = 2;
 // Le slider n'émet pas à chaque pixel glissé, pour ne pas flooder le socket.
 const SET_VOLUME_DEBOUNCE_MS = 150;
 const LAST_CONNECTION_KEY = "glide-last-connection";
+// Le serveur retombe sur ce port si 3000 est déjà pris (fallback +1, +2...) ;
+// utilisé seulement quand l'IP saisie manuellement ne précise pas de port.
+const DEFAULT_PORT = 3000;
+
+// Accepte "192.168.1.5" ou "192.168.1.5:3001" (le serveur peut avoir basculé
+// sur un autre port si 3000 était déjà occupé).
+function parseIpAndPort(raw: string, fallbackPort = DEFAULT_PORT) {
+  const trimmed = raw.trim();
+  const match = trimmed.match(/^(.+):(\d+)$/);
+  if (match) {
+    return { ip: match[1], port: Number(match[2]) };
+  }
+  return { ip: trimmed, port: fallbackPort };
+}
 // Au-delà de cette vitesse (px/event), le multiplicateur d'accélération est saturé.
 const ACCEL_SPEED_DIVISOR = 40;
 const ACCEL_MAX_BONUS = 1.5;
@@ -131,15 +145,23 @@ export default function App() {
     }, SET_VOLUME_DEBOUNCE_MS);
   };
 
-  const connectWithPin = async (ip: string, pinCode: string) => {
+  const connectWithPin = async (
+    ipInput: string,
+    pinCode: string,
+    explicitPort?: number,
+  ) => {
     setIsConnecting(true);
 
-    // Détecte si hébergé par le serveur Electron (même origine)
-    const isHostedByServer =
-      window.location.protocol === "https:" && window.location.port === "3000";
+    const { ip, port } = parseIpAndPort(ipInput, explicitPort ?? DEFAULT_PORT);
+
+    // Détecte si hébergé par le serveur Electron (même origine). Le port du
+    // serveur peut varier (fallback si 3000 était occupé), donc on se fie au
+    // protocole https (seul le serveur Electron packagé sert en HTTPS) plutôt
+    // qu'à un port supposé fixe.
+    const isHostedByServer = window.location.protocol === "https:";
     const targetURL = isHostedByServer
       ? `${window.location.protocol}//${window.location.hostname}:${window.location.port}`
-      : `https://${ip.replace(/:3000$/, "").trim()}:3000`;
+      : `https://${ip}:${port}`;
 
     console.log(`Connexion à : ${targetURL} avec PIN ${pinCode}`);
 
@@ -164,12 +186,11 @@ export default function App() {
       setIsConnecting(false);
       setIsReconnecting(false);
       setShowPinModal(false);
-      const cleanIP = ip.replace(/:3000$/, "").trim();
-      setServerIP(cleanIP);
+      setServerIP(ip);
       socketRef.current = socket;
       localStorage.setItem(
         LAST_CONNECTION_KEY,
-        JSON.stringify({ ip: cleanIP, pin: pinCode }),
+        JSON.stringify({ ip, pin: pinCode, port }),
       );
     });
 
@@ -216,11 +237,11 @@ export default function App() {
         window.matchMedia("(display-mode: standalone)").matches ||
         (navigator as unknown as { standalone?: boolean }).standalone === true;
       const standaloneHint = isStandaloneApp
-        ? "\n\n⚠️ App installée détectée : iOS/Android ne proposent pas d'accepter un certificat depuis une app installée. Ouvre d'abord https://<IP>:3000 dans Safari/Chrome, accepte le certificat, puis reviens ici."
+        ? `\n\n⚠️ App installée détectée : iOS/Android ne proposent pas d'accepter un certificat depuis une app installée. Ouvre d'abord https://${ip}:${port} dans Safari/Chrome, accepte le certificat, puis reviens ici.`
         : "";
 
       alert(
-        `Connection failed: ${error.message}\n\nVérifier:\n1. Serveur lancé\n2. Windows Firewall autorise port 3000\n3. Téléphone et PC sur même WiFi${standaloneHint}`,
+        `Connection failed: ${error.message}\n\nVérifier:\n1. Serveur lancé\n2. Windows Firewall autorise le port ${port}\n3. Téléphone et PC sur même WiFi${standaloneHint}`,
       );
     });
   };
@@ -230,14 +251,15 @@ export default function App() {
     const saved = localStorage.getItem(LAST_CONNECTION_KEY);
     if (!saved) return;
     try {
-      const { ip, pin: savedPin } = JSON.parse(saved) as {
+      const { ip, pin: savedPin, port } = JSON.parse(saved) as {
         ip?: string;
         pin?: string;
+        port?: number;
       };
       if (ip && savedPin) {
         setServerIP(ip);
         setPin(savedPin);
-        connectWithPin(ip, savedPin);
+        connectWithPin(ip, savedPin, port);
       }
     } catch {
       // Donnée corrompue, ignorée : l'utilisateur retapera le PIN.
@@ -285,7 +307,7 @@ export default function App() {
                 try {
                   const data = JSON.parse(result.getText());
                   stopQRScan();
-                  connectWithPin(data.ip, data.pin);
+                  connectWithPin(data.ip, data.pin, data.port);
                 } catch (e) {
                   console.error("Invalid QR code", e);
                 }
@@ -451,7 +473,7 @@ export default function App() {
             <>
               <input
                 type="text"
-                placeholder="192.168.0.50 (IP only)"
+                placeholder="192.168.0.50 (ou 192.168.0.50:3001)"
                 value={serverIP}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                   setServerIP(e.target.value)
