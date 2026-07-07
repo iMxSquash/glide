@@ -157,6 +157,13 @@ export function useGlideConnection({
       });
 
       signaling.on("joinError", ({ reason }) => {
+        // During an auto-rejoin loop (host still reconnecting after
+        // peerLeft), a transient "Session not found" is expected until the
+        // host re-registers its room : only surface a terminal error when
+        // we've never authenticated yet (initial connect, not a retry after
+        // a prior success), matching handleConnectionLost's rule.
+        if (hasAuthenticatedRef.current) return;
+
         clearRejoinTimer();
         setStatus("error");
         setErrorMessage(
