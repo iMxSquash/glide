@@ -1,6 +1,11 @@
 import { useState, useEffect, useRef } from "react";
 import { io, Socket } from "socket.io-client";
 import { BrowserQRCodeReader } from "@zxing/library";
+import type {
+  AuthPayload,
+  ClientToServerEvents,
+  ServerToClientEvents,
+} from "@glide/shared-types";
 
 interface PointerState {
   id: number;
@@ -76,7 +81,9 @@ export default function App() {
     return localStorage.getItem(INVERT_SCROLL_STORAGE_KEY) === "true";
   });
   const invertScrollRef = useRef(invertScroll);
-  const socketRef = useRef<Socket | null>(null);
+  const socketRef = useRef<Socket<ServerToClientEvents, ClientToServerEvents> | null>(
+    null,
+  );
   const trackpadRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const keyboardInputRef = useRef<HTMLInputElement>(null);
@@ -205,8 +212,9 @@ export default function App() {
     // rejectUnauthorized est une option Node : dans un navigateur, la confiance
     // au certificat auto-signé passe uniquement par l'acceptation manuelle
     // (Safari/Chrome) au premier accès HTTPS, pas par une option socket.io.
-    const socket = io(targetURL, {
-      auth: { pin: pinCode },
+    const authPayload: AuthPayload = { pin: pinCode };
+    const socket: Socket<ServerToClientEvents, ClientToServerEvents> = io(targetURL, {
+      auth: authPayload,
       transports: ["websocket"],
       timeout: 10000,
       reconnectionAttempts: 3,
@@ -240,14 +248,15 @@ export default function App() {
       setIsReconnecting(true);
     });
 
-    socket.on("reconnect", () => {
-      console.log("✅ Reconnecté !");
-      setIsConnected(true);
-      setIsReconnecting(false);
-    });
+    // Pas de socket.on("reconnect", ...) : c'est un événement du Manager, pas
+    // du Socket (piège classique de socket.io-client) — il ne se déclenche
+    // jamais ici. Le socket ré-émet "connect" tout seul une fois reconnecté,
+    // déjà géré par le handler "connect" ci-dessus.
 
     // Tous les essais de reconnexion ont échoué : retour à l'écran PIN.
-    socket.on("reconnect_failed", () => {
+    // "reconnect_failed" est lui aussi un événement du Manager (socket.io),
+    // pas du Socket lui-même.
+    socket.io.on("reconnect_failed", () => {
       console.error("❌ Reconnexion impossible");
       setIsReconnecting(false);
       setIsConnected(false);
@@ -257,7 +266,7 @@ export default function App() {
 
     // Le volume réel du PC est la seule source de vérité (le serveur l'envoie
     // à la connexion puis après chaque changement, cf. loudness côté serveur).
-    socket.on("volumeState", (state: { volume: number; muted: boolean }) => {
+    socket.on("volumeState", (state) => {
       setVolume(state.volume);
       setMuted(state.muted);
     });
@@ -285,14 +294,19 @@ export default function App() {
           "Le serveur est en pause sur le PC. Reprends-le depuis le menu de la barre des tâches.",
         );
       } else {
+        // Cause la plus fréquente d'un échec "réseau" générique : le certificat
+        // auto-signé de cette IP n'a encore jamais été accepté par le navigateur
+        // (nouvelle IP, cert régénéré...). Une websocket ne déclenche jamais le
+        // prompt "faire confiance à ce certificat" — il faut visiter l'URL en
+        // direct au moins une fois pour l'accepter.
         const isStandaloneApp =
           window.matchMedia("(display-mode: standalone)").matches ||
           (navigator as unknown as { standalone?: boolean }).standalone === true;
-        const standaloneHint = isStandaloneApp
+        const certHint = isStandaloneApp
           ? ` App installée détectée : ouvre d'abord https://${ip}:${port} dans Safari/Chrome, accepte le certificat, puis reviens ici.`
-          : "";
+          : ` Si c'est la première connexion à cette IP, ouvre d'abord https://${ip}:${port} dans un onglet Safari/Chrome et accepte l'avertissement de certificat, puis reviens ici.`;
         setConnectionError(
-          `Impossible de joindre le serveur (${error.message}). Vérifie que le serveur est lancé, que le firewall Windows autorise le port ${port}, et que le téléphone et le PC sont sur le même WiFi.${standaloneHint}`,
+          `Impossible de joindre le serveur (${error.message}). Vérifie que le serveur est lancé, que le firewall Windows autorise le port ${port}, et que le téléphone et le PC sont sur le même WiFi.${certHint}`,
         );
       }
 
@@ -300,8 +314,23 @@ export default function App() {
     });
   };
 
-  // Reconnexion directe au dernier serveur connu, sans re-saisir le PIN.
+  // Au premier chargement : soit on arrive via le lien du QR code (scanné par
+  // l'appareil photo natif du téléphone, avant même d'avoir ouvert le site —
+  // le PIN est en query string, l'IP/port sont déjà l'origine de cette page
+  // puisque la PWA est servie par le même serveur), soit on tente une
+  // reconnexion directe au dernier serveur connu, sans re-saisir le PIN.
   useEffect(() => {
+    const pinFromUrl = new URLSearchParams(window.location.search).get("pin");
+    if (pinFromUrl) {
+      // Nettoie l'URL pour ne pas retenter la connexion à chaque refresh.
+      window.history.replaceState({}, "", window.location.pathname);
+      const ip = window.location.hostname;
+      setServerIP(ip);
+      setPin(pinFromUrl);
+      connectWithPin(ip, pinFromUrl, Number(window.location.port) || undefined);
+      return;
+    }
+
     const saved = localStorage.getItem(LAST_CONNECTION_KEY);
     if (!saved) return;
     try {
@@ -356,9 +385,17 @@ export default function App() {
             (result) => {
               if (result) {
                 try {
-                  const data = JSON.parse(result.getText());
+                  // Le QR encode un lien https://ip:port/?pin=xxxxxx (voir
+                  // showPINWindow côté serveur), pas du JSON.
+                  const url = new URL(result.getText());
+                  const scannedPin = url.searchParams.get("pin");
+                  if (!scannedPin) throw new Error("No PIN in QR code");
                   stopQRScan();
-                  connectWithPin(data.ip, data.pin, data.port);
+                  connectWithPin(
+                    url.hostname,
+                    scannedPin,
+                    url.port ? Number(url.port) : undefined,
+                  );
                 } catch (e) {
                   console.error("Invalid QR code", e);
                 }

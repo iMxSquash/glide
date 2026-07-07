@@ -89,6 +89,13 @@ npm run dist:mac      # macOS .dmg
 
 > ⚠️ **Installed PWA + certificate:** once the app is added to the home screen, it runs in standalone mode and iOS won't show the "trust this certificate" prompt if the cert ever changes (new PC, new IP, cert renewed). If the installed app can't connect, open the same `https://` URL directly in Safari first, accept the certificate there, then reopen the installed app.
 
+### Android
+1. **Open Chrome:** Navigate to `https://192.168.x.x:3000/` (from PC popup or by scanning the QR code)
+2. **Accept certificate:** Chrome shows "Your connection is not private" — tap **Advanced** → **Proceed to `<IP>` (unsafe)** to trust the self-signed certificate
+3. **Enter PIN:** 6-digit code from PC
+4. **Control:** Trackpad gestures + on-screen volume slider
+5. **Optional — install as an app:** Chrome menu (⋮) → **Add to Home screen** → **Install**. As with iOS, if the installed app ever fails to connect (new PC, new IP, renewed cert), open the same `https://` URL in Chrome directly first to re-accept the certificate, then reopen the installed app.
+
 ## Auto-start (Optional)
 
 ```bash

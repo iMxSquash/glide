@@ -1,5 +1,5 @@
 {
-    "name": "shared-types",
+    "name": "@glide/shared-types",
     "version": "1.0.0",
     "private": true,
     "main": "src/index.ts",

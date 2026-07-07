@@ -9,6 +9,11 @@ import { mouse, keyboard, Button, Key } from "@nut-tree-fork/nut-js";
 import express from "express";
 import { execSync } from "child_process";
 import loudness from "loudness";
+import type {
+  AuthPayload,
+  ClientToServerEvents,
+  ServerToClientEvents,
+} from "@glide/shared-types";
 
 const DEFAULT_PORT = 3000;
 const MAX_PORT_ATTEMPTS = 10;
@@ -19,7 +24,7 @@ const PIN_BLOCK_DURATION_MS = 5 * 60 * 1000;
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let updateTrayMenu: (() => void) | null = null;
-let io: Server | null = null;
+let io: Server<ClientToServerEvents, ServerToClientEvents> | null = null;
 let currentPIN: string = "";
 let localIP: string = "";
 let networkCandidates: string[] = [];
@@ -415,7 +420,7 @@ async function startServer(): Promise<void> {
 
   const httpsServer = https.createServer({ key, cert }, expressApp);
 
-  io = new Server(httpsServer, {
+  io = new Server<ClientToServerEvents, ServerToClientEvents>(httpsServer, {
     cors: { origin: "*" },
     transports: ["websocket"],
   });
@@ -435,7 +440,8 @@ async function startServer(): Promise<void> {
       return;
     }
 
-    if (socket.handshake.auth.pin === currentPIN) {
+    const auth = socket.handshake.auth as AuthPayload;
+    if (auth.pin === currentPIN) {
       pinAttempts.delete(ip);
       next();
       return;
@@ -453,12 +459,12 @@ async function startServer(): Promise<void> {
       .then((state) => socket.emit("volumeState", state))
       .catch((error) => console.error("Failed to read system volume:", error));
 
-    socket.on("mouseDelta", (data: { x: number; y: number }) => {
+    socket.on("mouseDelta", (data) => {
       pendingMouseDelta.x += data.x;
       pendingMouseDelta.y += data.y;
     });
 
-    socket.on("scroll", (data: { x: number; y: number }) => {
+    socket.on("scroll", (data) => {
       pendingScrollDelta.x += data.x;
       pendingScrollDelta.y += data.y;
     });
@@ -482,13 +488,13 @@ async function startServer(): Promise<void> {
       await mouse.releaseButton(Button.LEFT);
     });
 
-    socket.on("typeText", async (text: string) => {
+    socket.on("typeText", async (text) => {
       if (typeof text === "string" && text.length > 0) {
         await keyboard.type(text);
       }
     });
 
-    socket.on("keyPress", async (key: "Enter" | "Backspace") => {
+    socket.on("keyPress", async (key) => {
       if (key === "Enter") await keyboard.type(Key.Enter);
       else if (key === "Backspace") await keyboard.type(Key.Backspace);
     });
@@ -505,7 +511,7 @@ async function startServer(): Promise<void> {
       await broadcastVolumeState();
     });
 
-    socket.on("setVolume", async (value: number) => {
+    socket.on("setVolume", async (value) => {
       await loudness.setVolume(Math.max(0, Math.min(100, Math.round(value))));
       await broadcastVolumeState();
     });
@@ -616,8 +622,8 @@ async function showPINWindow(): Promise<void> {
   }
 
   mainWindow = new BrowserWindow({
-    width: 400,
-    height: 720,
+    width: 760,
+    height: 480,
     frame: false,
     resizable: false,
     alwaysOnTop: true,
@@ -628,8 +634,13 @@ async function showPINWindow(): Promise<void> {
     },
   });
 
-  const qrData = JSON.stringify({ ip: localIP, pin: currentPIN, port: activePort });
-  const qrCodeDataURL = await QRCode.toDataURL(qrData, {
+  // Un vrai lien https (pas du JSON) : scanné avec l'appareil photo natif du
+  // téléphone (avant même d'avoir ouvert le site), il ouvre directement le
+  // navigateur sur le PC — au lieu d'exiger d'être déjà sur le site pour
+  // utiliser le scanner interne à la PWA. Le PIN en query string est repris
+  // par la PWA au chargement pour se connecter sans ressaisie.
+  const qrUrl = `https://${localIP}:${activePort}/?pin=${currentPIN}`;
+  const qrCodeDataURL = await QRCode.toDataURL(qrUrl, {
     width: 250,
     color: { dark: "#6EE7B7", light: "#0E0F12" },
   });
@@ -664,85 +675,75 @@ async function showPINWindow(): Promise<void> {
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: #2A2D34; border-radius: 4px; }
     ::-webkit-scrollbar-thumb:hover { background: #383C45; }
-    .container { text-align: center; width: 100%; }
+    .container {
+      display: flex;
+      align-items: center;
+      gap: 36px;
+      width: 100%;
+      max-width: 680px;
+    }
+    .text-col { flex: 1; min-width: 0; text-align: left; }
     h1 {
       color: #6EE7B7;
       font-size: 20px;
       font-weight: 600;
-      margin-bottom: 20px;
+      margin-bottom: 16px;
     }
     .pin {
-      font-size: 56px;
+      font-size: 52px;
       font-weight: 700;
-      letter-spacing: 8px;
+      letter-spacing: 6px;
       color: #F2F2F3;
-      margin: 20px 0;
+      margin: 12px 0;
     }
     .info {
       color: #9A9DA3;
       font-size: 14px;
-      margin-top: 15px;
-      margin-bottom: 20px;
+      margin-top: 12px;
+      margin-bottom: 12px;
     }
-    button {
-      background: #16181D;
-      color: #F2F2F3;
-      border: none;
-      padding: 12px 24px;
-      border-radius: 8px;
-      font-size: 14px;
-      cursor: pointer;
-      margin-top: 10px;
+    .steps {
+      text-align: left;
+      color: #9A9DA3;
+      font-size: 13px;
+      line-height: 1.6;
+      margin: 16px 0 0;
+      padding-left: 20px;
     }
-    button:hover { background: #1C1E24; }
-    #qrContainer {
-      margin-top: 10px;
-      display: none;
-    }
-    #qrContainer.show {
-      display: block;
-    }
-    img { 
-      width: 250px; 
-      height: 250px;
-      margin: 10px auto;
+    .steps li { margin-bottom: 6px; }
+    .steps li::marker { color: #6EE7B7; font-weight: 600; }
+    .qr-col { flex-shrink: 0; }
+    img {
+      width: 260px;
+      height: 260px;
       border-radius: 12px;
+      display: block;
     }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>Glide Server</h1>
-    <div class="pin">${currentPIN}</div>
-    <p class="info">Open on iPhone:</p>
-    <p class="info" style="color: #6EE7B7; font-size: 16px; font-weight: 500;">https://${localIP}:${activePort}</p>
-    ${
-      otherIPs.length > 0
-        ? `<p class="info" style="font-size: 12px;">Autre IP possible si celle-ci ne fonctionne pas : ${otherIPs.join(", ")}</p>`
-        : ""
-    }
-    <p class="info" id="clientCount" style="font-size: 12px;">${clientLabel}</p>
-    <button id="toggleBtn">Show QR Code</button>
-    <div id="qrContainer">
+    <div class="text-col">
+      <h1>Glide Server</h1>
+      <div class="pin">${currentPIN}</div>
+      <p class="info">Open on iPhone:</p>
+      <p class="info" style="color: #6EE7B7; font-size: 16px; font-weight: 500;">https://${localIP}:${activePort}</p>
+      ${
+        otherIPs.length > 0
+          ? `<p class="info" style="font-size: 12px;">Autre IP possible si celle-ci ne fonctionne pas : ${otherIPs.join(", ")}</p>`
+          : ""
+      }
+      <p class="info" id="clientCount" style="font-size: 12px;">${clientLabel}</p>
+      <ol class="steps">
+        <li>Scanne le QR code avec l'appareil photo de ton téléphone (ça ouvre directement le site — pas besoin d'avoir déjà l'app ouverte), ou tape l'URL ci-dessus dans Safari/Chrome</li>
+        <li>Accepte l'avertissement de certificat — uniquement au premier lancement</li>
+        <li>Le PIN se remplit tout seul depuis le QR code (sinon entre celui affiché ci-dessus)</li>
+      </ol>
+    </div>
+    <div class="qr-col">
       <img src="${qrCodeDataURL}" alt="QR Code" />
     </div>
   </div>
-  <script>
-    const btn = document.getElementById('toggleBtn');
-    const qr = document.getElementById('qrContainer');
-    let isShowing = false;
-    
-    btn.addEventListener('click', () => {
-      isShowing = !isShowing;
-      if (isShowing) {
-        qr.classList.add('show');
-        btn.textContent = 'Hide QR Code';
-      } else {
-        qr.classList.remove('show');
-        btn.textContent = 'Show QR Code';
-      }
-    });
-  </script>
 </body>
 </html>`;
 

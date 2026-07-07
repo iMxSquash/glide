@@ -69,15 +69,16 @@ Les bugs constatés (souris qui saute, clics qui ne partent pas, volume aléatoi
 
 ## 🟡 P2 — Finition v1
 
-- [ ] **Tests sur devices réels** : matrice iPhone (Safari + PWA installée) × Android (Chrome + PWA installée) × Windows 10/11. Vérifier : latence souris, taps, scroll, reconnexion après verrouillage écran, reconnexion après mise en veille PC.
-- [ ] **Onboarding première utilisation** (côté PC : fenêtre PIN → étapes "1. Scanne le QR, 2. Accepte le certificat, 3. Entre le PIN") — actuellement il faut deviner.
-- [ ] **Page d'erreur certificat** : si la PWA détecte que la socket échoue en WSS, afficher un guide "ouvre d'abord https://IP:3000 dans Safari et accepte le certificat".
-- [ ] Nettoyage : `libs/shared-types` et `libs/shared-ui` sont quasi vides — soit y mettre les types des événements socket (`mouseDelta`, `leftClick`, … partagés client/serveur, ça éviterait les typos d'events), soit les supprimer.
-- [ ] Typer les événements Socket.io des deux côtés (interfaces `ClientToServerEvents` / `ServerToClientEvents` de socket.io) à partir de `libs/shared-types`.
-- [ ] `@types/express` v5 avec express v4 (`apps/server-electron/package.json`) → aligner sur `@types/express@^4`.
-- [ ] Vérifier le **service worker** : `registerType: "autoUpdate"` OK, mais tester qu'une vieille version cachée de la PWA ne reste pas servie après une mise à jour du serveur (versionner ou `skipWaiting`).
-- [ ] Compléter le README : la section iPhone existe, ajouter Android (Chrome → menu → "Ajouter à l'écran d'accueil").
-- [ ] CI : vérifier que `deploy-pwa.yml` et `release.yml` passent avec les nouveaux assets/icônes.
+- [ ] **Tests sur devices réels** : matrice iPhone (Safari + PWA installée) × Android (Chrome + PWA installée) × Windows 10/11. Vérifier : latence souris, taps, scroll, reconnexion après verrouillage écran, reconnexion après mise en veille PC. — non fait, nécessite du matériel physique.
+- [x] **Onboarding première utilisation** — la fenêtre PIN (`main.ts` → `showPINWindow`) affiche maintenant une liste numérotée "1. Scanne le QR / 2. Accepte le certificat / 3. Entre le PIN".
+- [x] **Page d'erreur certificat** : le bandeau d'erreur de connexion générique (`App.tsx` → `connect_error`) suggère maintenant systématiquement (pas seulement en mode standalone) d'ouvrir `https://IP:port` dans le navigateur pour accepter le certificat avant de réessayer.
+- [x] **Nettoyage** : `libs/shared-ui` supprimé (inutilisé, aucune UI ne l'importait). `libs/shared-types` contient maintenant les vrais contrats d'événements (`ClientToServerEvents`, `ServerToClientEvents`, `Delta2D`, `VolumeState`, `AuthPayload`), publié comme package npm workspace réel `@glide/shared-types` (voir point suivant pour pourquoi).
+- [x] **Typage Socket.io** des deux côtés à partir de `@glide/shared-types` : `Server<ClientToServerEvents, ServerToClientEvents>` côté serveur, `Socket<ServerToClientEvents, ClientToServerEvents>` côté client. Ce typage a révélé un vrai bug latent : `socket.on("reconnect"/"reconnect_failed", ...)` n'écoutait rien (ce sont des événements du *Manager*, pas du *Socket*, un piège classique de socket.io-client) — `reconnect_failed` déplacé sur `socket.io.on(...)`, `reconnect` supprimé (redondant, `connect` se redéclenche déjà après reconnexion).
+  - Note technique : `@glide/shared-types` est un vrai package npm workspace (pas juste un alias `tsconfig.paths`) car l'exécuteur Nx `@nx/js:tsc` du serveur électron échoue avec `TS6059` si un fichier source est importé en dehors du `rootDir` du projet consommateur — passer par `node_modules` (symlink workspace) contourne cette contrainte proprement et préserve la structure de sortie `dist/src/main.js` attendue par `package.json#main`.
+- [x] `@types/express` aligné sur `^4.17.21` (cohérent avec `express@^4.22.1`, `apps/server-electron/package.json`).
+- [x] **Service worker** vérifié : `registerType: "autoUpdate"` active déjà automatiquement `skipWaiting`/`clientsClaim` côté vite-plugin-pwa (confirmé en lisant sa source) — aucune vieille version ne devrait rester servie. Pas de changement de code nécessaire.
+- [x] README complété avec une section Android (Chrome → accepter le certificat → PIN → "Add to Home screen").
+- [~] CI : `build:client` et `build:server` (mêmes étapes que `deploy-pwa.yml`/`release.yml`) validés en local après les changements ci-dessus — mais les workflows GitHub Actions eux-mêmes n'ont pas été exécutés (nécessiterait un push/tag).
 
 ## 🔵 v2 (hors scope v1, à ne pas commencer avant)
 
@@ -97,6 +98,7 @@ Les bugs constatés (souris qui saute, clics qui ne partent pas, volume aléatoi
 4. ~~**Assets & tray** (P1) — icônes PWA + tray + installeur.~~ ✅ Fait
 5. ~~**Scroll 2 doigts + drag + clavier + QR-first + erreurs + déconnexion + pull-to-refresh** (P1).~~ ✅ Fait
 6. ~~**Sécurité — trancher HTTPS vs HTTP+WS local**~~ ✅ Fait (HTTPS conservé, PIN retiré de l'UI)
-7. **Tests devices réels + onboarding** (P2), puis release. ← prochaine étape
+7. ~~**Onboarding, guidage certificat, typage Socket.io, cleanup libs, README Android**~~ ✅ Fait
+8. **Tests sur devices réels** (P2, seul point restant), puis release. ← prochaine étape
 
-> **P0 et P1 entièrement traités.** Testé par build + typecheck (`tsc --noEmit`) sur les deux apps, et par usage réel iPhone (scroll, clavier, paramètres, connexion) pendant cette session ; reste le P2 (tests Android, onboarding, cleanup) avant release.
+> **P0, P1 et la quasi-totalité du P2 sont traités.** Testé par build + typecheck (`tsc --noEmit`) sur les deux apps après chaque changement. Seul le P2 "tests sur devices réels" (matrice iPhone/Android/Windows physique) et l'exécution effective des workflows GitHub Actions restent hors de portée sans matériel/CI réels — tout le reste (onboarding, typage, cleanup, README, `@types/express`) est fait.
