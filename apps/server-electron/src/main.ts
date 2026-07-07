@@ -5,19 +5,17 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import * as QRCode from "qrcode";
-import { mouse, keyboard, Button, Key } from "@nut-tree-fork/nut-js";
 import express from "express";
 import { execSync } from "child_process";
-import loudness from "loudness";
 import type {
   AuthPayload,
   ClientToServerEvents,
   ServerToClientEvents,
 } from "@glide/shared-types";
+import * as inputHandlers from "./inputHandlers";
 
 const DEFAULT_PORT = 3000;
 const MAX_PORT_ATTEMPTS = 10;
-const MOUSE_TICK_HZ = 120;
 const PIN_MAX_ATTEMPTS = 5;
 const PIN_BLOCK_DURATION_MS = 5 * 60 * 1000;
 
@@ -37,67 +35,6 @@ let connectedClientCount = 0;
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 if (!gotSingleInstanceLock) {
   app.quit();
-}
-
-// Deltas de souris accumulés entre deux ticks, appliqués en un seul setPosition
-// (au lieu d'un aller-retour getPosition/setPosition par message reçu, qui sature
-// nut-js et fait sauter/ramer le curseur).
-let pendingMouseDelta = { x: 0, y: 0 };
-let cursorPosition: { x: number; y: number } | null = null;
-let isApplyingMousePosition = false;
-
-// Deltas de scroll (2 doigts) accumulés en pixels, convertis en "steps" nut-js
-// (l'unité de scrollUp/Down/Left/Right est OS-dépendante, pas le pixel).
-let pendingScrollDelta = { x: 0, y: 0 };
-const SCROLL_PIXELS_PER_STEP = 1;
-
-async function applyPendingScroll(): Promise<void> {
-  const stepsY = Math.trunc(pendingScrollDelta.y / SCROLL_PIXELS_PER_STEP);
-  const stepsX = Math.trunc(pendingScrollDelta.x / SCROLL_PIXELS_PER_STEP);
-  if (stepsY === 0 && stepsX === 0) return;
-
-  // Le reste (< 1 step) est conservé pour le prochain tick, sinon les petits
-  // mouvements de scroll s'accumulent puis se perdent (curseur qui "colle").
-  pendingScrollDelta.y -= stepsY * SCROLL_PIXELS_PER_STEP;
-  pendingScrollDelta.x -= stepsX * SCROLL_PIXELS_PER_STEP;
-
-  if (stepsY > 0) await mouse.scrollDown(stepsY);
-  else if (stepsY < 0) await mouse.scrollUp(-stepsY);
-
-  if (stepsX > 0) await mouse.scrollRight(stepsX);
-  else if (stepsX < 0) await mouse.scrollLeft(-stepsX);
-}
-
-function startMouseTickLoop(): void {
-  setInterval(async () => {
-    await applyPendingScroll();
-
-    if (isApplyingMousePosition) return;
-
-    if (pendingMouseDelta.x === 0 && pendingMouseDelta.y === 0) {
-      // Rien à appliquer : on invalide la position mise en cache pour se
-      // resynchroniser avec la position réelle au prochain mouvement (au cas
-      // où le curseur ait été déplacé par autre chose entre-temps).
-      cursorPosition = null;
-      return;
-    }
-
-    const delta = pendingMouseDelta;
-    pendingMouseDelta = { x: 0, y: 0 };
-    isApplyingMousePosition = true;
-    try {
-      if (!cursorPosition) {
-        cursorPosition = await mouse.getPosition();
-      }
-      cursorPosition = {
-        x: cursorPosition.x + delta.x,
-        y: cursorPosition.y + delta.y,
-      };
-      await mouse.setPosition(cursorPosition);
-    } finally {
-      isApplyingMousePosition = false;
-    }
-  }, 1000 / MOUSE_TICK_HZ);
 }
 
 // Interfaces virtuelles connues (VPN, machines virtuelles, conteneurs...) à
@@ -284,31 +221,6 @@ function closeFirewallPort(port: number): void {
 }
 
 /**
- * @returns {{ volume: number; muted: boolean }} Real system volume, read via the
- * `loudness` lib (not a locally-guessed counter).
- */
-async function getVolumeState(): Promise<{ volume: number; muted: boolean }> {
-  const [volume, muted] = await Promise.all([
-    loudness.getVolume(),
-    loudness.getMuted(),
-  ]);
-  return { volume, muted };
-}
-
-/**
- * Reads the real system volume and broadcasts it to every connected client,
- * so all devices stay in sync with the actual PC volume.
- */
-async function broadcastVolumeState(): Promise<void> {
-  try {
-    const state = await getVolumeState();
-    io?.emit("volumeState", state);
-  } catch (error) {
-    console.error("Failed to read system volume:", error);
-  }
-}
-
-/**
  * Reflects the number of connected devices in the tray tooltip/menu and, if
  * open, the PIN window ("1 appareil connecté").
  * @param {number} count Number of currently connected sockets
@@ -451,83 +363,39 @@ async function startServer(): Promise<void> {
     next(new Error("Invalid PIN"));
   });
 
+  // Diffuse tout changement de volume (déclenché par ce mode ou par un autre
+  // transport actif en parallèle, ex: WebRTC) à tous les clients LAN connectés.
+  inputHandlers.onVolumeChange((state) => io?.emit("volumeState", state));
+
   io.on("connection", (socket) => {
     console.log("Client connected");
     setConnectedClientCount(connectedClientCount + 1);
 
-    getVolumeState()
+    inputHandlers
+      .getVolumeState()
       .then((state) => socket.emit("volumeState", state))
       .catch((error) => console.error("Failed to read system volume:", error));
 
-    socket.on("mouseDelta", (data) => {
-      pendingMouseDelta.x += data.x;
-      pendingMouseDelta.y += data.y;
-    });
-
-    socket.on("scroll", (data) => {
-      pendingScrollDelta.x += data.x;
-      pendingScrollDelta.y += data.y;
-    });
-
-    socket.on("leftClick", async () => {
-      await mouse.leftClick();
-    });
-
-    socket.on("rightClick", async () => {
-      await mouse.rightClick();
-    });
-
+    socket.on("mouseDelta", inputHandlers.accumulateMouseDelta);
+    socket.on("scroll", inputHandlers.accumulateScroll);
+    socket.on("leftClick", inputHandlers.leftClick);
+    socket.on("rightClick", inputHandlers.rightClick);
     // Drag & drop : double-tap-and-hold côté client presse le bouton, le
     // déplacement se fait via les mouseDelta déjà en cours, puis relâche au
     // pointerup.
-    socket.on("mouseDown", async () => {
-      await mouse.pressButton(Button.LEFT);
-    });
-
-    socket.on("mouseUp", async () => {
-      await mouse.releaseButton(Button.LEFT);
-    });
-
-    socket.on("typeText", async (text) => {
-      if (typeof text === "string" && text.length > 0) {
-        await keyboard.type(text);
-      }
-    });
-
-    socket.on("keyPress", async (key) => {
-      if (key === "Enter") await keyboard.type(Key.Enter);
-      else if (key === "Backspace") await keyboard.type(Key.Backspace);
-    });
-
-    socket.on("volumeUp", async () => {
-      const current = await loudness.getVolume();
-      await loudness.setVolume(Math.min(100, current + 10));
-      await broadcastVolumeState();
-    });
-
-    socket.on("volumeDown", async () => {
-      const current = await loudness.getVolume();
-      await loudness.setVolume(Math.max(0, current - 10));
-      await broadcastVolumeState();
-    });
-
-    socket.on("setVolume", async (value) => {
-      await loudness.setVolume(Math.max(0, Math.min(100, Math.round(value))));
-      await broadcastVolumeState();
-    });
-
-    socket.on("toggleMute", async () => {
-      const muted = await loudness.getMuted();
-      await loudness.setMuted(!muted);
-      await broadcastVolumeState();
-    });
+    socket.on("mouseDown", inputHandlers.mouseDown);
+    socket.on("mouseUp", inputHandlers.mouseUp);
+    socket.on("typeText", inputHandlers.typeText);
+    socket.on("keyPress", inputHandlers.keyPress);
+    socket.on("volumeUp", inputHandlers.volumeUp);
+    socket.on("volumeDown", inputHandlers.volumeDown);
+    socket.on("setVolume", inputHandlers.setVolume);
+    socket.on("toggleMute", inputHandlers.toggleMute);
 
     socket.on("disconnect", () => {
       console.log("Client disconnected");
       setConnectedClientCount(Math.max(0, connectedClientCount - 1));
-      // Sécurité : si la connexion coupe pendant un drag (WiFi, verrouillage
-      // écran...), le bouton gauche resterait sinon pressé indéfiniment sur le PC.
-      mouse.releaseButton(Button.LEFT).catch(() => {});
+      inputHandlers.releaseMouseButtonSafely();
     });
   });
 
@@ -540,7 +408,7 @@ async function startServer(): Promise<void> {
   console.log(`   Network: https://${localIP}:${activePort}`);
   console.log(`   PIN:     ${currentPIN}\n`);
 
-  startMouseTickLoop();
+  inputHandlers.startMouseTickLoop();
 }
 
 /**
