@@ -1,6 +1,6 @@
 {
     "name": "client-pwa",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "private": true,
     "type": "module",
     "scripts": {
@@ -9,7 +9,7 @@
         "preview": "vite preview"
     },
     "dependencies": {
-        "@glide/shared-types": "1.0.0",
+        "@glide/shared-types": "1.1.0",
         "@zxing/library": "^0.21.3",
         "react": "^18.3.1",
         "react-dom": "^18.3.1",

@@ -77,6 +77,8 @@ jobs:
           body: |
             ## Glide ${{ github.ref_name }}
 
+            Contrôle ton PC Windows à distance depuis ton téléphone (iPhone/Android), en trackpad tactile, sur le même WiFi.
+
             ### 📦 Installation Windows
 
             - Télécharger le fichier `.exe`
@@ -85,18 +87,23 @@ jobs:
 
             ### 🚀 Utilisation
 
-            1. Lancer Glide sur ton PC
-            2. Noter le PIN et l'IP affichés
-            3. Sur iPhone Safari: `https://<IP>:3000`
-            4. Entrer le PIN
+            1. Lancer Glide sur ton PC : une fenêtre affiche le PIN et un QR code
+            2. Scanner le QR code avec l'appareil photo du téléphone (ouvre directement le site, pas besoin d'avoir déjà l'app), ou ouvrir l'URL affichée dans Safari/Chrome
+            3. Accepter l'avertissement de certificat au premier lancement uniquement
+            4. Le PIN se remplit automatiquement depuis le QR code (sinon le saisir manuellement)
             5. Contrôler le PC avec les gestes trackpad !
 
             ### 🔥 Fonctionnalités
+            - ✅ Trackpad tactile fluide (déplacement, clic gauche/droit, scroll 2 doigts, drag & drop)
+            - ✅ Clavier virtuel et contrôle du volume système (slider + mute, synchronisé avec le PC)
+            - ✅ Reconnexion automatique (WiFi coupé, écran verrouillé) et wake lock pour garder l'écran actif
+            - ✅ Onboarding QR code en premier, PIN régénéré à chaque lancement
+            - ✅ Certificat auto-signé persistant (accepté une seule fois, tant que l'IP ne change pas)
             - ✅ Gestion automatique du firewall Windows
-            - ✅ Certificat auto-signé avec IP SAN
-            - ✅ PIN régénéré à chaque lancement
             - ✅ Réseau local uniquement (sécurisé)
-            - ✅ PWA installable sur iPhone
+            - ✅ PWA installable sur iPhone/Android
+
+            > Sur iPhone : utiliser Safari (l'app installée sur l'écran d'accueil ne peut pas accepter le certificat auto-signé, voir le README).
           draft: false
           prerelease: false
         env:
