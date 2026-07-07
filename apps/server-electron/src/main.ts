@@ -10,13 +10,19 @@ import {
   onPeerStateChange,
 } from "./webrtcSession";
 
-// Signaling non déployé (étape E) : par défaut on pointe sur une instance
-// locale pour le dev. `GLIDE_SIGNALING_URL` permet de pointer vers Render une
-// fois déployé, sans rebuild.
-const DEFAULT_SIGNALING_URL = "http://localhost:4000";
-// Idem pour la PWA : par défaut le serveur vite local, `GLIDE_PWA_URL` pointera
-// vers le domaine Vercel une fois l'étape E faite.
-const DEFAULT_PWA_URL = "http://localhost:4200";
+// En dev (app.isPackaged === false), on pointe sur les instances locales.
+// Une fois packagé (release .exe/.dmg), personne ne va définir
+// GLIDE_SIGNALING_URL/GLIDE_PWA_URL à la main avant de lancer l'installeur :
+// le binaire distribué doit fonctionner tel quel, donc il pointe directement
+// sur le déploiement de production (étape E). Les deux variables d'env
+// restent un override possible (ex. pointer un build packagé vers un
+// environnement de test).
+const DEFAULT_SIGNALING_URL = app.isPackaged
+  ? "https://glide-signaling.onrender.com"
+  : "http://localhost:4000";
+const DEFAULT_PWA_URL = app.isPackaged
+  ? "https://glide-lyart.vercel.app"
+  : "http://localhost:4200";
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
