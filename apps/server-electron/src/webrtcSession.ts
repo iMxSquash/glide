@@ -190,7 +190,12 @@ function registerIpcHandlers(): void {
   });
 
   ipcMain.on("webrtc:datachannel-closed", (_event, { channel }) => {
-    if (channel === "control") resetAuth();
+    if (channel !== "control") return;
+    resetAuth();
+    // Sécurité : si le canal control ferme pendant un drag, le bouton gauche
+    // resterait sinon pressé indéfiniment sur le PC (même filet de sécurité
+    // que sur peerLeft et peer-connection-failed).
+    inputHandlers.releaseMouseButtonSafely();
   });
 
   ipcMain.on("webrtc:peer-connection-failed", () => {
