@@ -9,3 +9,5 @@ build
 *.exe
 certs
 tmp
+.vercel
+.env*
