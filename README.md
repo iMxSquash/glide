@@ -77,10 +77,8 @@ npm run dist:mac      # macOS .dmg
 2. **Locate:** `apps/server-electron/out/Glide Setup.exe`
 3. **Install & Run:** Double-click the installer
 4. **Result:** 
-   - ✅ Opens firewall port 3000 automatically
    - ✅ Shows popup with PIN + URL
    - ✅ Runs in system tray
-   - ✅ Closes firewall on quit
 
 ### macOS
 1. **Build:** `npm run dist:mac`
@@ -89,7 +87,6 @@ npm run dist:mac      # macOS .dmg
 4. **Result:**
    - ✅ Shows popup with PIN + URL
    - ✅ Runs in menu bar
-   - ✅ macOS handles firewall automatically
 
 ### iPhone
 1. **Open Safari:** Navigate to `https://192.168.x.x:3000/` (from PC popup) — use Safari itself, not an already-installed home screen app
@@ -124,7 +121,6 @@ npm run remove:autostart
   - 2-finger tap = right click
 - ✅ **Volume control:** on-screen slider + mute (physical volume buttons can't be intercepted by a browser/PWA on iOS/Android)
 - ✅ **PWA:** Installable on iPhone, works offline
-- ✅ **Auto firewall:** Opens/closes port automatically
 - ✅ **Secure:** PIN auth + self-signed TLS with IP SAN
 - ✅ **Zero config:** QR code auto-setup
 
@@ -133,7 +129,6 @@ npm run remove:autostart
 - **Network:** Local only (0.0.0.0:3000), not exposed to internet
 - **Auth:** 6-digit PIN, regenerated on each launch
 - **TLS:** Self-signed certificate with IP in Subject Alternative Names
-- **Firewall:** Automatic management on Windows
 - **Privacy:** No cloud, no tracking, no logs
 
 ## Tech Stack
@@ -160,13 +155,9 @@ npm run build:client  # Rebuild if needed
 - Certificate is persisted across server restarts (only regenerated if the PC's local IP changes)
 
 ### Can't connect from iPhone
-1. ✅ PC firewall allows port 3000 (auto-managed by app)
-2. ✅ Both devices on same WiFi network
-3. ✅ Accept certificate warning in Safari first time
-4. ✅ If using the installed home screen app, try opening the `https://` URL in Safari directly first (see note above)
-
-### Windows firewall not opening
-- Run app as Administrator first time
+1. ✅ Both devices on same WiFi network
+2. ✅ Accept certificate warning in Safari first time
+3. ✅ If using the installed home screen app, try opening the `https://` URL in Safari directly first (see note above)
 
 ## Project Structure
 
