@@ -786,7 +786,6 @@ export default function App() {
       <div className="flex items-center justify-between p-4">
         <h1 className="text-xl font-bold text-accent">Glide</h1>
         <div className="flex items-center gap-3">
-          <div className="text-sm text-secondary">PIN: {pin}</div>
           <button
             onClick={() => setShowKeyboard(true)}
             aria-label="Keyboard"

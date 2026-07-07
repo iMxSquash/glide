@@ -61,9 +61,9 @@ Les bugs constatés (souris qui saute, clics qui ne partent pas, volume aléatoi
 - [x] Bouton **Disconnect** dans le panneau settings : ferme la socket, efface la dernière connexion mémorisée, retour au modal PIN (écran QR-first).
 - [x] `overscroll-behavior: none` + `height: 100%` sur `html`/`body`/`#root` pour bloquer le pull-to-refresh/swipe-back iOS.
 
-### Sécurité (décision à prendre)
-- [ ] Trancher **HTTPS auto-signé vs HTTP+WS local** : le HTTPS auto-signé cause la friction certificat (surtout PWA iOS, cf. P0). Alternative assumée pour du 100% LAN : HTTP simple + PIN, en documentant que le trafic n'est pas chiffré sur le WiFi local. Ou garder HTTPS et documenter le flow d'acceptation. → Cette décision conditionne l'UX d'onboarding entière.
-- [ ] Ne pas afficher le PIN en clair dans l'UI connectée (`App.tsx:306`) — inutile et sensible en screenshot.
+### Sécurité ✅ Fait
+- [x] **HTTPS auto-signé vs HTTP+WS local : on garde HTTPS.** Le service worker de la PWA (précache, installabilité) exige un contexte sécurisé (HTTPS ou localhost) — passer en HTTP simple casserait la PWA elle-même, pas seulement le chiffrement. La friction certificat (P0.4) est déjà traitée : cert persisté, régénéré seulement si l'IP change, README documente le flow d'acceptation Safari.
+- [x] Ne plus afficher le PIN en clair dans l'UI connectée — retiré de l'en-tête (`App.tsx`), sensible en cas de capture d'écran.
 
 ---
 
@@ -96,7 +96,7 @@ Les bugs constatés (souris qui saute, clics qui ne partent pas, volume aléatoi
 3. ~~**Volume** (P0.3) — supprimer le listener clavier mort, brancher le slider sur `loudness`, sync du volume réel.~~ ✅ Fait
 4. ~~**Assets & tray** (P1) — icônes PWA + tray + installeur.~~ ✅ Fait
 5. ~~**Scroll 2 doigts + drag + clavier + QR-first + erreurs + déconnexion + pull-to-refresh** (P1).~~ ✅ Fait
-6. **Sécurité — trancher HTTPS vs HTTP+WS local** (P1, reste à décider). ← prochaine étape
-7. **Tests devices réels + onboarding** (P2), puis release.
+6. ~~**Sécurité — trancher HTTPS vs HTTP+WS local**~~ ✅ Fait (HTTPS conservé, PIN retiré de l'UI)
+7. **Tests devices réels + onboarding** (P2), puis release. ← prochaine étape
 
-> **P0 et P1 "Serveur Windows" + "Client PWA" entièrement traités.** Testé par build + typecheck (`tsc --noEmit`) sur les deux apps ; reste à valider sur devices réels (cf. P2) et à trancher la décision sécurité HTTPS avant de passer au P2.
+> **P0 et P1 entièrement traités.** Testé par build + typecheck (`tsc --noEmit`) sur les deux apps, et par usage réel iPhone (scroll, clavier, paramètres, connexion) pendant cette session ; reste le P2 (tests Android, onboarding, cleanup) avant release.
