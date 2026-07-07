@@ -13,6 +13,7 @@ import type {
   ServerToClientEvents,
 } from "@glide/shared-types";
 import * as inputHandlers from "./inputHandlers";
+import { startWebRtcHost } from "./webrtcSession";
 
 const DEFAULT_PORT = 3000;
 const MAX_PORT_ATTEMPTS = 10;
@@ -661,6 +662,15 @@ if (gotSingleInstanceLock) {
     await startServer();
     createTray();
     showPINWindow();
+
+    // WebRTC (mise en ligne, étape C) : opt-in via variable d'env tant que le
+    // signaling n'est pas déployé (étape E) et que la PWA ne sait pas encore
+    // s'y connecter (étape D) — pas de changement de comportement pour les
+    // utilisateurs du mode LAN direct existant tant que ce n'est pas prêt.
+    const signalingUrl = process.env.GLIDE_SIGNALING_URL;
+    if (signalingUrl) {
+      startWebRtcHost({ signalingUrl, getCurrentPin: () => currentPIN });
+    }
 
     // Hide from dock on macOS (run in background only)
     if (process.platform === "darwin") {
