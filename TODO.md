@@ -80,6 +80,93 @@ Les bugs constatés (souris qui saute, clics qui ne partent pas, volume aléatoi
 - [x] README complété avec une section Android (Chrome → accepter le certificat → PIN → "Add to Home screen").
 - [~] CI : `build:client` et `build:server` (mêmes étapes que `deploy-pwa.yml`/`release.yml`) validés en local après les changements ci-dessus — mais les workflows GitHub Actions eux-mêmes n'ont pas été exécutés (nécessiterait un push/tag).
 
+## 🚀 Mise en ligne — release .exe + PWA hébergée
+
+### Contexte architecture (à lire avant de commencer)
+
+Contraintes : PWA hébergée sur Vercel, téléphone + PC **sur le même WiFi**, plusieurs utilisateurs simultanés (chacun son PC), et **aucun port à ouvrir**.
+
+Aujourd'hui la PWA est servie par le PC lui-même et le téléphone se connecte **en direct** sur `wss://192.168.x.x:3000`. Deux approches écartées :
+
+- **Garder la connexion directe `wss://IP:3000` depuis la PWA Vercel** : garde exactement ce qu'on veut supprimer (port 3000 dans le firewall + certificat auto-signé à accepter à la main), et le flow cert devient même *pire* (l'utilisateur est sur `glide.vercel.app`, il faut lui demander d'ouvrir `https://IP:3000` dans un autre onglet juste pour accepter le cert). En prime, Chrome est en train de restreindre les connexions site public → IP privée (Private Network Access) : cette approche est fragile à moyen terme.
+- **Relay qui forwarde tous les events** : marcherait, mais chaque mouvement de souris ferait téléphone → internet → PC alors que les deux appareils sont sur le même WiFi. Latence et dépendance internet inutiles.
+
+L'architecture qui coche les 4 contraintes : **WebRTC DataChannel en P2P sur le LAN, avec un mini serveur de signaling** qui ne sert qu'à la mise en relation (quelques Ko à la connexion, plus rien ensuite) :
+
+```
+            ┌───────────┐  wss sortant (signaling
+            │ Signaling │  uniquement : SDP/ICE)
+            │  (rooms)  │◄──────────────┐
+            └─────▲─────┘               │
+   wss sortant    │                     │
+┌────────┐────────┘               ┌──────────┐
+│ iPhone │                        │ PC Glide │
+│ (PWA   │◄══════════════════════►│(Electron)│
+│ Vercel)│  WebRTC DataChannel    └──────────┘
+└────────┘  direct sur le LAN
+```
+
+- **Aucun port à ouvrir, aucune règle firewall** : le PC et le téléphone font chacun une connexion *sortante* vers le signaling, puis ICE négocie un chemin UDP direct sur le LAN (le firewall Windows laisse passer car le PC initie aussi des paquets sortants vers le téléphone — c'est le fonctionnement normal de WebRTC). Les scripts `setup-firewall` deviennent inutiles.
+- **Plus de certificat auto-signé** : le DataChannel est chiffré par DTLS nativement, aucune acceptation manuelle. La PWA vient de Vercel en vrai HTTPS → installable proprement, y compris en PWA installée iOS.
+- **Latence** : identique au mode direct actuel — les events restent sur le LAN. Bonus possible : canal `unreliable/unordered` pour `mouseDelta`/`scroll` (une frame perdue est écrasée par la suivante), canal fiable pour clics/volume/clavier.
+- **Multi-utilisateurs** : chaque PC crée une room `sessionId` (`crypto.randomUUID()`) sur le signaling → sessions isolées, autant d'utilisateurs que de PC.
+- ⚠️ **Vercel n'héberge que la PWA statique** : les fonctions serverless Vercel ne supportent pas les WebSockets persistants, donc le signaling doit vivre ailleurs. Recommandation : **Render free** (aucune carte bancaire requise à l'inscription, WebSockets supportés). Contrepartie : spin-down après 15 min d'inactivité, ~1 min de réveil sur la requête suivante — sans impact réel puisque la reconnexion auto (étape C) gère déjà la coupure de la connexion PC↔signaling. Railway et Fly.io écartés : les deux exigent désormais une carte bancaire dès l'inscription (plus de vrai free tier en 2026).
+- ⚠️ Limite connue : sur un WiFi avec **isolation client** (réseaux invités, hôtels), le P2P est bloqué — mais la connexion directe actuelle l'est tout autant, donc rien de perdu. Un fallback "forward via le serveur" pourra s'ajouter en v2 si besoin.
+- Internet reste nécessaire pour charger la PWA et pour le handshake (pas pour le trafic souris). Acceptable : un PC sans internet est un cas marginal.
+
+### Étape A — Release GitHub du .exe actuel (aucun changement de code)
+
+- [ ] **Créer un nouveau tag sur HEAD** : le tag `v1.0.0` existe déjà mais pointe sur un ancien commit (`f54607e`), pas sur la v1 finale (`d241808`). Faire `git tag v1.1.0 && git push origin v1.1.0` → le workflow `release.yml` builde le `.exe` et publie la GitHub Release automatiquement.
+- [ ] Vérifier le run dans l'onglet **Actions** du repo (jamais exécuté pour de vrai jusqu'ici) et corriger si le build casse.
+- [ ] Télécharger le `.exe` depuis la release et le tester sur une machine (installation, PIN, connexion téléphone).
+- [ ] Soigner les release notes (le template dans `release.yml` mentionne encore "boutons volume iOS" — obsolète depuis P0.3).
+
+### Étape B — Le serveur de signaling (`apps/signaling`)
+
+- [ ] Créer `apps/signaling` : petit serveur Node + socket.io (pas d'Electron, pas de nut-js), ~100 lignes. Logique :
+  - Le PC émet `registerHost(sessionId)` → crée la room (re-register avec le même `sessionId` autorisé pour la reconnexion après coupure).
+  - Le téléphone émet `joinSession(sessionId)` → le signaling relaie les messages `offer`/`answer`/`iceCandidate` entre les deux sockets de la room, rien d'autre.
+  - Le **PIN ne transite jamais par le signaling** : il sera validé sur le DataChannel une fois le P2P établi (voir étape C).
+  - Cleanup : room détruite quand le PC se déconnecte (+ notifier le téléphone), heartbeat/timeout.
+  - Sécurité : `sessionId` non devinable (généré côté PC via `crypto.randomUUID()`), limite de joins par IP pour éviter le spam.
+- [ ] Étendre `@glide/shared-types` : events de signaling (`registerHost`, `joinSession`, `offer`, `answer`, `iceCandidate`, `peerLeft`…) + le protocole des messages DataChannel (auth PIN, puis les events existants `mouseDelta`, `scroll`, `leftClick`, `setVolume`, `volumeState`… sérialisés en JSON — ils ne passent plus par socket.io).
+
+### Étape C — Adapter le serveur Electron (WebRTC côté PC)
+
+- [ ] Choisir l'implémentation WebRTC côté Electron — recommandation : **fenêtre `BrowserWindow` cachée** qui utilise l'API WebRTC native de Chromium (zéro dépendance native en plus) et communique avec le main process par IPC ; alternative : `node-datachannel` dans le main process (une dépendance native de plus à côté de nut-js, mais pas de fenêtre cachée).
+- [ ] Au démarrage : connexion **sortante** au signaling (`socket.io-client`, URL configurable), génération du `sessionId`, `registerHost`. À chaque `joinSession` reçu : créer la `RTCPeerConnection`, échanger offer/answer/ICE via le signaling. Pas de STUN nécessaire (même LAN → host candidates suffisent).
+- [ ] **Auth sur le DataChannel** : premier message du téléphone = `{type:"auth", pin}` → le PC valide (rate-limit 5 essais / 5 min repris de `main.ts:171-178`), répond `authResult`, et n'accepte les events d'input qu'après succès. Router ensuite les messages vers la logique nut-js existante (extraire les handlers actuels de `main.ts` dans un module partageable, indépendant de socket.io).
+- [ ] Le QR code et la fenêtre PIN affichent `https://<app>.vercel.app/#s=<sessionId>` au lieu de `https://IP:3000`.
+- [ ] Deux canaux : `input` en `{ordered:false, maxRetransmits:0}` pour `mouseDelta`/`scroll` (une frame perdue est remplacée par la suivante), `control` fiable pour clics, clavier, volume, auth.
+- [ ] Supprimer (ou désactiver) ce qui devient inutile : serveur HTTPS local + génération/persistance de certificat, ouverture firewall (`setup-firewall.cjs`, `dev-server-wrapper.cjs`), service de la PWA par Express, affichage IP multi-interfaces. Recommandation : garder le code du mode LAN direct dans une branche/un commit taggé au cas où, mais ne pas maintenir deux modes dans l'exe.
+- [ ] Reconnexion : si le signaling coupe (internet instable), re-register avec le **même** `sessionId` ; si le P2P coupe (verrouillage écran téléphone), le téléphone rejoint la room et on refait un handshake — l'UX de reconnexion auto existante (bandeau "Reconnexion…") doit continuer à marcher.
+
+### Étape D — Adapter la PWA (WebRTC côté téléphone)
+
+- [ ] URL du signaling via variable d'env Vite (`VITE_SIGNALING_URL`) injectée au build.
+- [ ] Remplacer la connexion socket.io directe par : socket.io vers le signaling → `joinSession(sessionId)` → handshake WebRTC → DataChannels. Envoyer le PIN en premier message sur le canal `control`, attendre `authResult` avant d'afficher le trackpad.
+- [ ] Écran de connexion : le scan QR (ou l'ouverture du lien `#s=<sessionId>`) fournit la session → il ne reste que le PIN à taper. Garder une saisie manuelle "code de session + PIN" en fallback (le `sessionId` affiché en court dans la fenêtre PIN du PC).
+- [ ] Adapter l'envoi des events : le batching rAF existant reste, seul le transport change (DataChannel `input` au lieu de `socket.emit`). Clics/clavier/volume sur le canal `control`.
+- [ ] Supprimer la logique devenue morte : saisie IP:port, messages d'aide "accepter le certificat", détection standalone liée au cert, `iceServers` vide (pas de STUN sur LAN).
+- [ ] Mémorisation dernière connexion : stocker `sessionId` + PIN au lieu de IP + PIN.
+
+### Étape E — Déploiements
+
+- [ ] Déployer le signaling sur **Render free** (Web Service, pas de carte bancaire requise) : `npm start`, port fourni via `$PORT`, health check pour limiter les faux spin-down. Noter l'URL publique (ex. `glide-signaling.onrender.com`). Trafic quasi nul (handshakes uniquement) → free tier largement suffisant, spin-down 15 min / réveil ~1 min accepté.
+- [ ] Déployer la PWA sur Vercel : importer le repo GitHub, build command `npx nx build client-pwa`, output `dist/apps/client-pwa`, variable `VITE_SIGNALING_URL`. Ajouter un `vercel.json` avec le rewrite SPA (`/(.*)` → `/index.html`) et vérifier que `manifest.webmanifest` + `sw.js` sont servis avec les bons headers.
+- [ ] Supprimer (ou désactiver) `.github/workflows/deploy-pwa.yml` (GitHub Pages) pour ne pas maintenir deux versions de la PWA — Vercel se redéploie tout seul à chaque push sur `main`.
+- [ ] Vérifier l'installabilité PWA depuis le domaine Vercel (vrai HTTPS → plus aucun souci de certificat, y compris en PWA installée iOS 🎉).
+
+### Étape F — Validation & release finale
+
+- [ ] Test multi-utilisateurs : 2 PC + 2 téléphones **sur le même WiFi** en simultané (rooms isolées, aucun cross-talk entre les deux paires).
+- [ ] Vérifier la latence souris (doit être équivalente au mode direct actuel puisque le trafic reste sur le LAN) et la reconnexion après verrouillage d'écran du téléphone.
+- [ ] Tester sur un WiFi avec isolation client (si dispo) pour confirmer le message d'erreur — le P2P doit échouer proprement avec une explication, pas un spinner infini (timeout sur l'établissement de la connexion ICE).
+- [ ] Mettre à jour README (nouvelle architecture, URL Vercel, sections firewall/certificat obsolètes) et `RELEASES.md`.
+- [ ] Tagger `v1.2.0` : nouvelle release `.exe` **incluant le mode WebRTC** (l'exe de l'étape A ne connaît que le mode LAN direct).
+
+---
+
 ## 🔵 v2 (hors scope v1, à ne pas commencer avant)
 
 - [ ] Support **macOS** serveur (nut-js fonctionne, gérer les permissions Accessibilité macOS + firewall).
@@ -87,6 +174,7 @@ Les bugs constatés (souris qui saute, clics qui ne partent pas, volume aléatoi
 - [ ] Découverte auto du serveur sur le LAN (mDNS/Bonjour côté Electron + tentative de connexion sur les IP du sous-réseau côté client — un navigateur ne peut pas faire de mDNS, donc scan limité ou QR reste le chemin principal).
 - [ ] Gestes avancés : pinch-to-zoom, 3 doigts = alt-tab, geste médias (play/pause, next).
 - [ ] Multi-clients / kick d'un client depuis le tray.
+- [ ] **Support hors-LAN** (téléphone en 4G, PC ailleurs) : ajouter STUN aux `iceServers` (serveurs publics gratuits) + fallback "forward des events via le signaling" quand ICE échoue (WiFi à isolation client, NAT symétrique). L'infra signaling de la mise en ligne est déjà prête pour ça.
 
 ---
 
@@ -100,5 +188,6 @@ Les bugs constatés (souris qui saute, clics qui ne partent pas, volume aléatoi
 6. ~~**Sécurité — trancher HTTPS vs HTTP+WS local**~~ ✅ Fait (HTTPS conservé, PIN retiré de l'UI)
 7. ~~**Onboarding, guidage certificat, typage Socket.io, cleanup libs, README Android**~~ ✅ Fait
 8. **Tests sur devices réels** (P2, seul point restant), puis release. ← prochaine étape
+9. **Mise en ligne** (section 🚀) : release `.exe` (étape A, immédiat), puis signaling + WebRTC + Vercel (étapes B→F).
 
 > **P0, P1 et la quasi-totalité du P2 sont traités.** Testé par build + typecheck (`tsc --noEmit`) sur les deux apps après chaque changement. Seul le P2 "tests sur devices réels" (matrice iPhone/Android/Windows physique) et l'exécution effective des workflows GitHub Actions restent hors de portée sans matériel/CI réels — tout le reste (onboarding, typage, cleanup, README, `@types/express`) est fait.
