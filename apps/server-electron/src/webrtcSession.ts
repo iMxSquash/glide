@@ -5,6 +5,7 @@ import * as path from "path";
 import type {
   ControlChannelClientMessage,
   ControlChannelServerMessage,
+  Delta2D,
   InputChannelMessage,
   SignalingClientToServerEvents,
   SignalingServerToClientEvents,
@@ -119,6 +120,20 @@ function handleAuth(pin: string, currentPin: string): void {
   sendControlMessage({ type: "authResult", success: false, reason: "Invalid PIN" });
 }
 
+// Messages sur les DataChannels ne sont que du JSON.parse() : rien ne
+// garantit à l'exécution que les champs numériques déclarés par le type
+// (issus d'un client non fiable) en sont vraiment. Un NaN non filtré ferait
+// planter loudness.setVolume(), ou pire, empoisonnerait durablement
+// l'accumulateur de delta souris (`+= NaN` reste NaN pour toujours).
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function isFiniteDelta(value: unknown): value is Delta2D {
+  const delta = value as Partial<Delta2D> | null;
+  return typeof delta === "object" && delta !== null && isFiniteNumber(delta.x) && isFiniteNumber(delta.y);
+}
+
 function handleControlMessage(raw: unknown, currentPin: string): void {
   const message = raw as ControlChannelClientMessage;
 
@@ -155,7 +170,7 @@ function handleControlMessage(raw: unknown, currentPin: string): void {
       inputHandlers.volumeDown();
       break;
     case "setVolume":
-      inputHandlers.setVolume(message.value);
+      if (isFiniteNumber(message.value)) inputHandlers.setVolume(message.value);
       break;
     case "toggleMute":
       inputHandlers.toggleMute();
@@ -169,10 +184,10 @@ function handleInputMessage(raw: unknown): void {
   const message = raw as InputChannelMessage;
   switch (message.type) {
     case "mouseDelta":
-      inputHandlers.accumulateMouseDelta(message.delta);
+      if (isFiniteDelta(message.delta)) inputHandlers.accumulateMouseDelta(message.delta);
       break;
     case "scroll":
-      inputHandlers.accumulateScroll(message.delta);
+      if (isFiniteDelta(message.delta)) inputHandlers.accumulateScroll(message.delta);
       break;
   }
 }
