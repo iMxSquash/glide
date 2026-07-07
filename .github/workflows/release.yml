@@ -77,7 +77,7 @@ jobs:
           body: |
             ## Glide ${{ github.ref_name }}
 
-            Contrôle ton PC Windows à distance depuis ton téléphone (iPhone/Android), en trackpad tactile, sur le même WiFi.
+            Contrôle ton PC Windows à distance depuis ton téléphone (iPhone/Android), en trackpad tactile, sur le même WiFi. Connexion directe en WebRTC (peer-to-peer sur le LAN) : aucun port à ouvrir, aucun firewall à configurer.
 
             ### 📦 Installation Windows
 
@@ -88,22 +88,19 @@ jobs:
             ### 🚀 Utilisation
 
             1. Lancer Glide sur ton PC : une fenêtre affiche le PIN et un QR code
-            2. Scanner le QR code avec l'appareil photo du téléphone (ouvre directement le site, pas besoin d'avoir déjà l'app), ou ouvrir l'URL affichée dans Safari/Chrome
-            3. Accepter l'avertissement de certificat au premier lancement uniquement
-            4. Le PIN se remplit automatiquement depuis le QR code (sinon le saisir manuellement)
-            5. Contrôler le PC avec les gestes trackpad !
+            2. Scanner le QR code avec l'appareil photo du téléphone : ça ouvre directement la PWA (servie en HTTPS), déjà connectée à la bonne session
+            3. Entrer le PIN affiché sur le PC
+            4. Contrôler le PC avec les gestes trackpad !
 
             ### 🔥 Fonctionnalités
             - ✅ Trackpad tactile fluide (déplacement, clic gauche/droit, scroll 2 doigts, drag & drop)
             - ✅ Clavier virtuel et contrôle du volume système (slider + mute, synchronisé avec le PC)
-            - ✅ Reconnexion automatique (WiFi coupé, écran verrouillé) et wake lock pour garder l'écran actif
+            - ✅ Reconnexion automatique (WiFi coupé, écran verrouillé, PC redémarré)
             - ✅ Onboarding QR code en premier, PIN régénéré à chaque lancement
-            - ✅ Certificat auto-signé persistant (accepté une seule fois, tant que l'IP ne change pas)
-            - ✅ Gestion automatique du firewall Windows
-            - ✅ Réseau local uniquement (sécurisé)
-            - ✅ PWA installable sur iPhone/Android
+            - ✅ Connexion WebRTC chiffrée (DTLS) directement entre le PC et le téléphone, aucun port à ouvrir
+            - ✅ PWA installable sur iPhone/Android, vrai HTTPS donc aucun certificat à accepter
 
-            > Sur iPhone : utiliser Safari (l'app installée sur l'écran d'accueil ne peut pas accepter le certificat auto-signé, voir le README).
+            > Les deux appareils doivent être sur le même WiFi (le trafic trackpad reste sur le LAN, il ne passe jamais par internet).
           draft: false
           prerelease: false
         env:
