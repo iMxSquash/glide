@@ -21,7 +21,7 @@ const DEFAULT_SIGNALING_URL = app.isPackaged
   ? "https://glide-signaling.onrender.com"
   : "http://localhost:4000";
 const DEFAULT_PWA_URL = app.isPackaged
-  ? "https://glide-lyart.vercel.app"
+  ? "https://glide.elwen.dev"
   : "http://localhost:4200";
 
 let mainWindow: BrowserWindow | null = null;
