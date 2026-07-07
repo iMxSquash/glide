@@ -8,34 +8,6 @@ export interface VolumeState {
   muted: boolean;
 }
 
-/**
- * @param {string} pin - 6-digit PIN, sent as socket.io `auth` on connect
- */
-export interface AuthPayload {
-  pin: string;
-}
-
-/** Events emitted by the client (phone), handled by the server (PC). */
-export interface ClientToServerEvents {
-  mouseDelta: (delta: Delta2D) => void;
-  scroll: (delta: Delta2D) => void;
-  leftClick: () => void;
-  rightClick: () => void;
-  mouseDown: () => void;
-  mouseUp: () => void;
-  typeText: (text: string) => void;
-  keyPress: (key: "Enter" | "Backspace") => void;
-  volumeUp: () => void;
-  volumeDown: () => void;
-  setVolume: (value: number) => void;
-  toggleMute: () => void;
-}
-
-/** Events emitted by the server (PC), handled by the client (phone). */
-export interface ServerToClientEvents {
-  volumeState: (state: VolumeState) => void;
-}
-
 // ---------------------------------------------------------------------------
 // WebRTC signaling (apps/signaling): pairs a PC and a phone on the same LAN
 // so they can negotiate a direct P2P DataChannel. The signaling server only

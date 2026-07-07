@@ -1,11 +1,6 @@
 import { useState, useEffect, useRef } from "react";
-import { io, Socket } from "socket.io-client";
 import { BrowserQRCodeReader } from "@zxing/library";
-import type {
-  AuthPayload,
-  ClientToServerEvents,
-  ServerToClientEvents,
-} from "@glide/shared-types";
+import { useGlideConnection } from "./useGlideConnection";
 
 interface PointerState {
   id: number;
@@ -27,23 +22,14 @@ const DRAG_HOLD_DELAY = 150;
 const SENSITIVITY_STORAGE_KEY = "glide-sensitivity";
 const DEFAULT_SENSITIVITY = 2;
 const INVERT_SCROLL_STORAGE_KEY = "glide-invert-scroll";
-// Le slider n'émet pas à chaque pixel glissé, pour ne pas flooder le socket.
+// Le slider n'émet pas à chaque pixel glissé, pour ne pas flooder le canal.
 const SET_VOLUME_DEBOUNCE_MS = 150;
 const LAST_CONNECTION_KEY = "glide-last-connection";
-// Le serveur retombe sur ce port si 3000 est déjà pris (fallback +1, +2...) ;
-// utilisé seulement quand l'IP saisie manuellement ne précise pas de port.
-const DEFAULT_PORT = 3000;
+// Signaling non déployé (étape E) : par défaut on pointe sur une instance
+// locale pour le dev. `VITE_SIGNALING_URL` pointera vers Render une fois
+// déployé (injecté au build par Vite).
+const SIGNALING_URL = import.meta.env.VITE_SIGNALING_URL || "http://localhost:4000";
 
-// Accepte "192.168.1.5" ou "192.168.1.5:3001" (le serveur peut avoir basculé
-// sur un autre port si 3000 était déjà occupé).
-function parseIpAndPort(raw: string, fallbackPort = DEFAULT_PORT) {
-  const trimmed = raw.trim();
-  const match = trimmed.match(/^(.+):(\d+)$/);
-  if (match) {
-    return { ip: match[1], port: Number(match[2]) };
-  }
-  return { ip: trimmed, port: fallbackPort };
-}
 // Au-delà de cette vitesse (px/event), le multiplicateur d'accélération est saturé.
 const ACCEL_SPEED_DIVISOR = 40;
 const ACCEL_MAX_BONUS = 1.5;
@@ -54,6 +40,32 @@ function applyAcceleration(dx: number, dy: number, sensitivity: number) {
   const accelBonus = Math.min(magnitude / ACCEL_SPEED_DIVISOR, ACCEL_MAX_BONUS);
   const multiplier = sensitivity * (1 + accelBonus);
   return { x: dx * multiplier, y: dy * multiplier };
+}
+
+interface LastConnection {
+  sessionId: string;
+  pin: string;
+}
+
+function readLastConnection(): LastConnection | null {
+  const saved = localStorage.getItem(LAST_CONNECTION_KEY);
+  if (!saved) return null;
+  try {
+    const parsed = JSON.parse(saved) as Partial<LastConnection>;
+    if (parsed.sessionId && parsed.pin) {
+      return { sessionId: parsed.sessionId, pin: parsed.pin };
+    }
+  } catch {
+    // Donnée corrompue, ignorée : l'utilisateur retapera le PIN.
+  }
+  return null;
+}
+
+// Le lien/QR encode `#s=<sessionId>` (voir showPINWindow côté serveur) : le
+// PIN ne transite jamais par l'URL, seule la session est connue à l'avance.
+function parseSessionIdFromHash(hash: string): string | null {
+  const match = hash.match(/^#s=(.+)$/);
+  return match ? decodeURIComponent(match[1]) : null;
 }
 
 function GlideLogo({ className }: { className?: string }) {
@@ -74,21 +86,30 @@ function GlideLogo({ className }: { className?: string }) {
 }
 
 export default function App() {
+  const { status, errorMessage, volume: connectionVolume, connect, disconnect, sendControl, sendInput } =
+    useGlideConnection({ signalingUrl: SIGNALING_URL });
+
+  // Dérivé du statut de connexion WebRTC plutôt que dupliqué en state local :
+  // "reconnecting" n'est atteignable qu'après un premier succès (voir
+  // useGlideConnection), donc le trackpad reste affiché pendant une reco.
+  const showPinModal = status !== "connected" && status !== "reconnecting";
+  const isConnecting = status === "connecting";
+  const isReconnecting = status === "reconnecting";
+  const connectionError = status === "error" ? errorMessage : null;
+
   const [pin, setPin] = useState("");
-  const [serverIP, setServerIP] = useState("");
-  const [isConnected, setIsConnected] = useState(false);
-  const [isConnecting, setIsConnecting] = useState(false);
-  const [showPinModal, setShowPinModal] = useState(true);
+  const [manualSessionId, setManualSessionId] = useState("");
+  // Session connue (via lien QR ou scan) mais PIN pas encore saisi.
+  const [pendingSessionId, setPendingSessionId] = useState<string | null>(null);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [isScanning, setIsScanning] = useState(false);
-  const [showManualIP, setShowManualIP] = useState(false);
-  const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [showManualEntry, setShowManualEntry] = useState(false);
   const [volume, setVolume] = useState(50);
   const [muted, setMuted] = useState(false);
   const [clickPulse, setClickPulse] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showKeyboard, setShowKeyboard] = useState(false);
   const [keyboardText, setKeyboardText] = useState("");
-  const [isReconnecting, setIsReconnecting] = useState(false);
   const [sensitivity, setSensitivity] = useState<number>(() => {
     const saved = localStorage.getItem(SENSITIVITY_STORAGE_KEY);
     return saved ? Number(saved) : DEFAULT_SENSITIVITY;
@@ -98,9 +119,6 @@ export default function App() {
     return localStorage.getItem(INVERT_SCROLL_STORAGE_KEY) === "true";
   });
   const invertScrollRef = useRef(invertScroll);
-  const socketRef = useRef<Socket<ServerToClientEvents, ClientToServerEvents> | null>(
-    null,
-  );
   const trackpadRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const keyboardInputRef = useRef<HTMLInputElement>(null);
@@ -142,30 +160,37 @@ export default function App() {
     localStorage.setItem(INVERT_SCROLL_STORAGE_KEY, String(invertScroll));
   }, [invertScroll]);
 
+  // Le volume réel du PC est la seule source de vérité (le serveur l'envoie
+  // à l'auth puis après chaque changement, cf. loudness côté serveur).
+  useEffect(() => {
+    setVolume(connectionVolume.volume);
+    setMuted(connectionVolume.muted);
+  }, [connectionVolume]);
+
   // Envoie les deltas accumulés au serveur à cadence fixe (~60 Hz max) au lieu
-  // d'un event par pointermove, pour éviter de flooder le socket.
+  // d'un event par pointermove, pour éviter de flooder le DataChannel.
   useEffect(() => {
     let rafId: number;
     const flush = () => {
       const pending = pendingDeltaRef.current;
-      if ((pending.x !== 0 || pending.y !== 0) && socketRef.current) {
-        socketRef.current.emit("mouseDelta", { x: pending.x, y: pending.y });
+      if (pending.x !== 0 || pending.y !== 0) {
+        sendInput({ type: "mouseDelta", delta: { x: pending.x, y: pending.y } });
         pendingDeltaRef.current = { x: 0, y: 0 };
       }
       const pendingScroll = pendingScrollRef.current;
-      if ((pendingScroll.x !== 0 || pendingScroll.y !== 0) && socketRef.current) {
-        socketRef.current.emit("scroll", { x: pendingScroll.x, y: pendingScroll.y });
+      if (pendingScroll.x !== 0 || pendingScroll.y !== 0) {
+        sendInput({ type: "scroll", delta: { x: pendingScroll.x, y: pendingScroll.y } });
         pendingScrollRef.current = { x: 0, y: 0 };
       }
       rafId = requestAnimationFrame(flush);
     };
     rafId = requestAnimationFrame(flush);
     return () => cancelAnimationFrame(rafId);
-  }, []);
+  }, [sendInput]);
 
-  // Sans Wake Lock, l'écran se verrouille au bout de 30s et coupe la socket.
+  // Sans Wake Lock, l'écran se verrouille au bout de 30s et coupe la connexion.
   useEffect(() => {
-    if (!isConnected) return;
+    if (status !== "connected") return;
 
     const requestWakeLock = async () => {
       try {
@@ -193,7 +218,7 @@ export default function App() {
       wakeLockRef.current?.release().catch(() => {});
       wakeLockRef.current = null;
     };
-  }, [isConnected]);
+  }, [status]);
 
   const handleVolumeSliderChange = (value: number) => {
     setVolume(value);
@@ -201,185 +226,56 @@ export default function App() {
       window.clearTimeout(volumeDebounceRef.current);
     }
     volumeDebounceRef.current = window.setTimeout(() => {
-      socketRef.current?.emit("setVolume", value);
+      sendControl({ type: "setVolume", value });
     }, SET_VOLUME_DEBOUNCE_MS);
   };
 
-  const connectWithPin = async (
-    ipInput: string,
-    pinCode: string,
-    explicitPort?: number,
-  ) => {
-    setIsConnecting(true);
-    setConnectionError(null);
-
-    const { ip, port } = parseIpAndPort(ipInput, explicitPort ?? DEFAULT_PORT);
-
-    // Détecte si hébergé par le serveur Electron (même origine). Le port du
-    // serveur peut varier (fallback si 3000 était occupé), donc on se fie au
-    // protocole https (seul le serveur Electron packagé sert en HTTPS) plutôt
-    // qu'à un port supposé fixe.
-    const isHostedByServer = window.location.protocol === "https:";
-    const targetURL = isHostedByServer
-      ? `${window.location.protocol}//${window.location.hostname}:${window.location.port}`
-      : `https://${ip}:${port}`;
-
-    console.log(`Connexion à : ${targetURL} avec PIN ${pinCode}`);
-
-    // rejectUnauthorized est une option Node : dans un navigateur, la confiance
-    // au certificat auto-signé passe uniquement par l'acceptation manuelle
-    // (Safari/Chrome) au premier accès HTTPS, pas par une option socket.io.
-    const authPayload: AuthPayload = { pin: pinCode };
-    const socket: Socket<ServerToClientEvents, ClientToServerEvents> = io(targetURL, {
-      auth: authPayload,
-      transports: ["websocket"],
-      timeout: 10000,
-      reconnectionAttempts: 3,
-    });
-
-    // true une fois qu'on a connecté au moins une fois, pour distinguer un échec
-    // de la connexion initiale d'un échec de reconnexion automatique en arrière-plan.
-    let hasConnectedOnce = false;
-
-    socket.on("connect", () => {
-      console.log("✅ Connexion réussie !");
-      hasConnectedOnce = true;
-      setIsConnected(true);
-      setIsConnecting(false);
-      setIsReconnecting(false);
-      setShowPinModal(false);
-      setServerIP(ip);
-      socketRef.current = socket;
-      localStorage.setItem(
-        LAST_CONNECTION_KEY,
-        JSON.stringify({ ip, pin: pinCode, port }),
-      );
-    });
-
-    // Si le WiFi coupe ou l'écran se verrouille, l'UI restait "connectée" mais
-    // plus rien ne marchait. On affiche un bandeau et on laisse socket.io
-    // reconnecter automatiquement (reconnectionAttempts ci-dessus).
-    socket.on("disconnect", (reason) => {
-      console.warn("⚠️ Déconnecté:", reason);
-      setIsConnected(false);
-      setIsReconnecting(true);
-    });
-
-    // Pas de socket.on("reconnect", ...) : c'est un événement du Manager, pas
-    // du Socket (piège classique de socket.io-client) — il ne se déclenche
-    // jamais ici. Le socket ré-émet "connect" tout seul une fois reconnecté,
-    // déjà géré par le handler "connect" ci-dessus.
-
-    // Tous les essais de reconnexion ont échoué : retour à l'écran PIN.
-    // "reconnect_failed" est lui aussi un événement du Manager (socket.io),
-    // pas du Socket lui-même.
-    socket.io.on("reconnect_failed", () => {
-      console.error("❌ Reconnexion impossible");
-      setIsReconnecting(false);
-      setIsConnected(false);
-      socketRef.current = null;
-      setShowPinModal(true);
-    });
-
-    // Le volume réel du PC est la seule source de vérité (le serveur l'envoie
-    // à la connexion puis après chaque changement, cf. loudness côté serveur).
-    socket.on("volumeState", (state) => {
-      setVolume(state.volume);
-      setMuted(state.muted);
-    });
-
-    socket.on("connect_error", (error) => {
-      console.error("❌ Erreur connexion:", error);
-      setIsConnecting(false);
-
-      // Pendant une reconnexion en arrière-plan, connect_error se déclenche à
-      // chaque tentative : ne pas spammer une popup, le bandeau suffit.
-      if (hasConnectedOnce) return;
-
-      // Le serveur distingue "Invalid PIN" / rate-limit / pause d'un simple
-      // échec réseau : afficher un message adapté plutôt qu'une alerte générique.
-      if (error.message === "Invalid PIN") {
-        setConnectionError(
-          "PIN incorrect. Vérifie le code affiché sur ton PC et réessaie.",
-        );
-      } else if (error.message.includes("Too many attempts")) {
-        setConnectionError(
-          "Trop de tentatives avec un mauvais PIN. Réessaie dans quelques minutes.",
-        );
-      } else if (error.message === "Server paused") {
-        setConnectionError(
-          "Le serveur est en pause sur le PC. Reprends-le depuis le menu de la barre des tâches.",
-        );
-      } else {
-        // Cause la plus fréquente d'un échec "réseau" générique : le certificat
-        // auto-signé de cette IP n'a encore jamais été accepté par le navigateur
-        // (nouvelle IP, cert régénéré...). Une websocket ne déclenche jamais le
-        // prompt "faire confiance à ce certificat" — il faut visiter l'URL en
-        // direct au moins une fois pour l'accepter.
-        const isStandaloneApp =
-          window.matchMedia("(display-mode: standalone)").matches ||
-          (navigator as unknown as { standalone?: boolean }).standalone === true;
-        const certHint = isStandaloneApp
-          ? ` App installée détectée : ouvre d'abord https://${ip}:${port} dans Safari/Chrome, accepte le certificat, puis reviens ici.`
-          : ` Si c'est la première connexion à cette IP, ouvre d'abord https://${ip}:${port} dans un onglet Safari/Chrome et accepte l'avertissement de certificat, puis reviens ici.`;
-        setConnectionError(
-          `Impossible de joindre le serveur (${error.message}). Vérifie que le serveur est lancé, que le firewall Windows autorise le port ${port}, et que le téléphone et le PC sont sur le même WiFi.${certHint}`,
-        );
-      }
-
-      setShowManualIP(true);
-    });
+  const handleConnect = (sessionId: string, pinCode: string) => {
+    setActiveSessionId(sessionId);
+    setPin(pinCode);
+    setPendingSessionId(null);
+    setShowManualEntry(false);
+    connect(sessionId, pinCode);
   };
 
-  // Au premier chargement : soit on arrive via le lien du QR code (scanné par
-  // l'appareil photo natif du téléphone, avant même d'avoir ouvert le site —
-  // le PIN est en query string, l'IP/port sont déjà l'origine de cette page
-  // puisque la PWA est servie par le même serveur), soit on tente une
-  // reconnexion directe au dernier serveur connu, sans re-saisir le PIN.
+  // Mémorise la connexion une fois l'auth confirmée, pour la reconnexion
+  // automatique au prochain lancement (sans re-scanner le QR).
   useEffect(() => {
-    const pinFromUrl = new URLSearchParams(window.location.search).get("pin");
-    if (pinFromUrl) {
-      // Nettoie l'URL pour ne pas retenter la connexion à chaque refresh.
-      window.history.replaceState({}, "", window.location.pathname);
-      const ip = window.location.hostname;
-      setServerIP(ip);
-      setPin(pinFromUrl);
-      connectWithPin(ip, pinFromUrl, Number(window.location.port) || undefined);
+    if (status === "connected" && activeSessionId && pin) {
+      localStorage.setItem(
+        LAST_CONNECTION_KEY,
+        JSON.stringify({ sessionId: activeSessionId, pin } satisfies LastConnection),
+      );
+    }
+  }, [status, activeSessionId, pin]);
+
+  // Au premier chargement : soit on arrive via le lien du QR code (scanné par
+  // l'appareil photo natif du téléphone, la session est dans le hash), soit
+  // on tente une reconnexion directe à la dernière session connue, sans
+  // re-scanner ni re-saisir le PIN.
+  useEffect(() => {
+    const hashSessionId = parseSessionIdFromHash(window.location.hash);
+    if (hashSessionId) {
+      // Nettoie l'URL pour ne pas retenter ce lien à chaque refresh (la
+      // session côté PC change à chaque relancement de Glide).
+      window.history.replaceState({}, "", window.location.pathname + window.location.search);
+      const saved = readLastConnection();
+      if (saved && saved.sessionId === hashSessionId) {
+        handleConnect(hashSessionId, saved.pin);
+      } else {
+        setPendingSessionId(hashSessionId);
+      }
       return;
     }
 
-    const saved = localStorage.getItem(LAST_CONNECTION_KEY);
-    if (!saved) return;
-    try {
-      const { ip, pin: savedPin, port } = JSON.parse(saved) as {
-        ip?: string;
-        pin?: string;
-        port?: number;
-      };
-      if (ip && savedPin) {
-        setServerIP(ip);
-        setPin(savedPin);
-        connectWithPin(ip, savedPin, port);
-      }
-    } catch {
-      // Donnée corrompue, ignorée : l'utilisateur retapera le PIN.
+    const saved = readLastConnection();
+    if (saved) {
+      handleConnect(saved.sessionId, saved.pin);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const findServerAndConnect = async () => {
-    if (pin.length !== 6) return;
-
-    if (!serverIP) {
-      setConnectionError("Entre l'adresse IP du PC affichée sur l'écran du serveur.");
-      return;
-    }
-
-    connectWithPin(serverIP, pin);
-  };
-
   const startQRScan = () => {
-    setConnectionError(null);
     setIsScanning(true);
   };
 
@@ -402,17 +298,14 @@ export default function App() {
             (result) => {
               if (result) {
                 try {
-                  // Le QR encode un lien https://ip:port/?pin=xxxxxx (voir
-                  // showPINWindow côté serveur), pas du JSON.
+                  // Le QR encode un lien https://pwa-url/#s=<sessionId> (voir
+                  // showPINWindow côté serveur), le PIN n'y est pas : il reste
+                  // à saisir une fois la session connue.
                   const url = new URL(result.getText());
-                  const scannedPin = url.searchParams.get("pin");
-                  if (!scannedPin) throw new Error("No PIN in QR code");
+                  const scannedSessionId = parseSessionIdFromHash(url.hash);
+                  if (!scannedSessionId) throw new Error("No session in QR code");
                   stopQRScan();
-                  connectWithPin(
-                    url.hostname,
-                    scannedPin,
-                    url.port ? Number(url.port) : undefined,
-                  );
+                  setPendingSessionId(scannedSessionId);
                 } catch (e) {
                   console.error("Invalid QR code", e);
                 }
@@ -448,19 +341,19 @@ export default function App() {
   const handleKeyboardInputChange = (value: string) => {
     const prev = keyboardText;
     if (value.length > prev.length && value.startsWith(prev)) {
-      socketRef.current?.emit("typeText", value.slice(prev.length));
+      sendControl({ type: "typeText", text: value.slice(prev.length) });
     } else if (value.length < prev.length && prev.startsWith(value)) {
       const removed = prev.length - value.length;
       for (let i = 0; i < removed; i++) {
-        socketRef.current?.emit("keyPress", "Backspace");
+        sendControl({ type: "keyPress", key: "Backspace" });
       }
     } else {
       // Changement non-linéaire (autocorrection, sélection remplacée...) :
       // resynchroniser en effaçant tout puis retapant la nouvelle valeur.
       for (let i = 0; i < prev.length; i++) {
-        socketRef.current?.emit("keyPress", "Backspace");
+        sendControl({ type: "keyPress", key: "Backspace" });
       }
-      if (value) socketRef.current?.emit("typeText", value);
+      if (value) sendControl({ type: "typeText", text: value });
     }
     setKeyboardText(value);
   };
@@ -468,7 +361,7 @@ export default function App() {
   const handleKeyboardKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
       e.preventDefault();
-      socketRef.current?.emit("keyPress", "Enter");
+      sendControl({ type: "keyPress", key: "Enter" });
       setKeyboardText("");
     }
   };
@@ -478,18 +371,15 @@ export default function App() {
     setKeyboardText("");
   };
 
-  // Il n'existait aucun moyen de revenir à l'écran PIN. On efface la dernière
-  // connexion mémorisée pour ne pas se reconnecter automatiquement au relancement.
   const handleDisconnect = () => {
-    socketRef.current?.disconnect();
-    socketRef.current = null;
+    disconnect();
     localStorage.removeItem(LAST_CONNECTION_KEY);
-    setIsConnected(false);
-    setIsReconnecting(false);
+    setActiveSessionId(null);
+    setPendingSessionId(null);
+    setShowManualEntry(false);
     setShowSettings(false);
-    setShowManualIP(false);
-    setConnectionError(null);
-    setShowPinModal(true);
+    setPin("");
+    setManualSessionId("");
   };
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -540,7 +430,7 @@ export default function App() {
             isDraggingRef.current = true;
             setIsDraggingUI(true);
             navigator.vibrate?.(20);
-            socketRef.current?.emit("mouseDown");
+            sendControl({ type: "mouseDown" });
           }
         }, DRAG_HOLD_DELAY);
       }
@@ -666,20 +556,20 @@ export default function App() {
       // Relâchement du drag démarré par le double-tap-and-hold.
       isDraggingRef.current = false;
       setIsDraggingUI(false);
-      socketRef.current?.emit("mouseUp");
+      sendControl({ type: "mouseUp" });
       navigator.vibrate?.(10);
       gestureHandledRef.current = true;
       lastTapUpRef.current = null;
-    } else if (socketRef.current && !gestureHandledRef.current) {
+    } else if (!gestureHandledRef.current) {
       // Tap 2 doigts = right click
       if (wasTwoTouches && tapDuration < TAP_MAX_DURATION && !hasMovedRef.current) {
-        socketRef.current.emit("rightClick");
+        sendControl({ type: "rightClick" });
         triggerClickFeedback();
         gestureHandledRef.current = true;
       }
       // Tap 1 doigt = left click
       else if (wasSingleTouch && tapDuration < TAP_MAX_DURATION && !hasMovedRef.current) {
-        socketRef.current.emit("leftClick");
+        sendControl({ type: "leftClick" });
         triggerClickFeedback();
         gestureHandledRef.current = true;
         // Mémorisé pour détecter un éventuel double-tap-and-hold juste après.
@@ -708,6 +598,14 @@ export default function App() {
       </svg>
     );
 
+    const subtitle = isScanning
+      ? "Scan the QR code shown on your PC"
+      : showManualEntry
+        ? "Enter the session code and PIN from your PC"
+        : pendingSessionId
+          ? "Enter the PIN shown on your PC"
+          : "Connect to your PC";
+
     return (
       <div className="h-full bg-background flex items-center justify-center p-6">
         <div className="bg-surface rounded-2xl p-8 w-full max-w-sm">
@@ -715,13 +613,7 @@ export default function App() {
             <GlideLogo className="w-8 h-8 text-accent" />
             <h1 className="text-3xl font-bold text-accent">Glide</h1>
           </div>
-          <p className="text-secondary mb-6">
-            {isScanning
-              ? "Scan the QR code shown on your PC"
-              : showManualIP
-                ? "Enter the IP and PIN from your PC"
-                : "Connect to your PC"}
-          </p>
+          <p className="text-secondary mb-6">{subtitle}</p>
 
           {connectionError && (
             <div className="bg-background text-red-400 text-sm p-3 rounded-xl mb-4 border border-red-400/30">
@@ -744,14 +636,14 @@ export default function App() {
                 Cancel
               </button>
             </>
-          ) : showManualIP ? (
+          ) : showManualEntry ? (
             <>
               <input
                 type="text"
-                placeholder="192.168.0.50 (ou 192.168.0.50:3001)"
-                value={serverIP}
+                placeholder="Session code"
+                value={manualSessionId}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  setServerIP(e.target.value)
+                  setManualSessionId(e.target.value)
                 }
                 className="w-full bg-background text-primary text-center p-3 rounded-xl mb-3 focus:outline-none focus:ring-2 focus:ring-accent text-sm"
                 disabled={isConnecting}
@@ -771,8 +663,8 @@ export default function App() {
               />
 
               <button
-                onClick={findServerAndConnect}
-                disabled={pin.length !== 6 || !serverIP || isConnecting}
+                onClick={() => handleConnect(manualSessionId.trim(), pin)}
+                disabled={pin.length !== 6 || !manualSessionId.trim() || isConnecting}
                 className="w-full bg-accent text-background font-medium py-3 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mb-3"
               >
                 {isConnecting ? (
@@ -800,16 +692,85 @@ export default function App() {
                 )}
               </button>
 
+              {isConnecting && (
+                <button
+                  onClick={disconnect}
+                  className="w-full text-secondary text-sm py-2 mb-3"
+                >
+                  Cancel
+                </button>
+              )}
+
               <button
-                onClick={() => {
-                  setConnectionError(null);
-                  setShowManualIP(false);
-                }}
+                onClick={() => setShowManualEntry(false)}
                 disabled={isConnecting}
                 className="w-full bg-surface-light text-primary font-medium py-3 rounded-xl disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 {qrIcon}
                 Scan QR Code Instead
+              </button>
+            </>
+          ) : pendingSessionId ? (
+            <>
+              <input
+                type="text"
+                inputMode="numeric"
+                maxLength={6}
+                value={pin}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  setPin(e.target.value.replace(/\D/g, ""))
+                }
+                className="w-full bg-background text-primary text-center text-3xl tracking-widest p-4 rounded-xl mb-4 focus:outline-none focus:ring-2 focus:ring-accent"
+                placeholder="000000"
+                disabled={isConnecting}
+                autoFocus
+              />
+
+              <button
+                onClick={() => handleConnect(pendingSessionId, pin)}
+                disabled={pin.length !== 6 || isConnecting}
+                className="w-full bg-accent text-background font-medium py-3 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mb-3"
+              >
+                {isConnecting ? (
+                  <>
+                    <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                        fill="none"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      />
+                    </svg>
+                    Connecting...
+                  </>
+                ) : (
+                  "Connect"
+                )}
+              </button>
+
+              {isConnecting && (
+                <button
+                  onClick={disconnect}
+                  className="w-full text-secondary text-sm py-2 mb-3"
+                >
+                  Cancel
+                </button>
+              )}
+
+              <button
+                onClick={() => setPendingSessionId(null)}
+                disabled={isConnecting}
+                className="w-full text-secondary text-sm py-2 disabled:opacity-50"
+              >
+                Not your PC? Scan again
               </button>
             </>
           ) : (
@@ -823,13 +784,10 @@ export default function App() {
               </button>
 
               <button
-                onClick={() => {
-                  setConnectionError(null);
-                  setShowManualIP(true);
-                }}
+                onClick={() => setShowManualEntry(true)}
                 className="w-full text-secondary text-sm py-2"
               >
-                Enter IP and PIN manually
+                Enter session code manually
               </button>
             </>
           )}
@@ -1004,7 +962,7 @@ export default function App() {
               {muted ? "Muted" : `${volume}%`}
             </span>
             <button
-              onClick={() => socketRef.current?.emit("toggleMute")}
+              onClick={() => sendControl({ type: "toggleMute" })}
               aria-label={muted ? "Unmute" : "Mute"}
               className={`w-9 h-9 flex items-center justify-center rounded-lg ${
                 muted ? "bg-accent text-background" : "bg-background text-secondary"
@@ -1034,7 +992,7 @@ export default function App() {
         </div>
         <div className="flex items-center gap-3">
           <button
-            onClick={() => socketRef.current?.emit("volumeDown")}
+            onClick={() => sendControl({ type: "volumeDown" })}
             className="w-12 h-12 bg-background rounded-xl text-primary font-bold"
           >
             −
@@ -1051,7 +1009,7 @@ export default function App() {
             style={{ "--range-progress": `${volume}%` } as React.CSSProperties}
           />
           <button
-            onClick={() => socketRef.current?.emit("volumeUp")}
+            onClick={() => sendControl({ type: "volumeUp" })}
             className="w-12 h-12 bg-background rounded-xl text-primary font-bold"
           >
             +
