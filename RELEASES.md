@@ -40,10 +40,10 @@ Utiliser [Semantic Versioning](https://semver.org/) :
 ### 🎉 Première release
 
 #### Fonctionnalités
-- Contrôle PC depuis iPhone
+- Contrôle PC depuis iPhone/Android
 - Trackpad multitouch
-- Volume control avec boutons iOS
-- Gestion automatique firewall
+- Volume control synchronisé avec le PC
+- Connexion WebRTC P2P (aucun port à ouvrir)
 - PWA installable
 
 #### Installation

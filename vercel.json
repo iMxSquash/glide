@@ -1,7 +1,13 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "installCommand": "npm ci",
   "buildCommand": "npx nx build client-pwa",
   "outputDirectory": "dist/apps/client-pwa",
+  "build": {
+    "env": {
+      "VITE_SIGNALING_URL": "https://glide-signaling.onrender.com"
+    }
+  },
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }],
   "headers": [
     {
