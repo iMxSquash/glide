@@ -102,6 +102,13 @@ function handleAuth(pin: string, currentPin: string): void {
     authAttempts = 0;
     sendControlMessage({ type: "authResult", success: true });
     setPeerConnected(true);
+    // Le volume affiché doit refléter l'état réel du PC dès la connexion, pas
+    // seulement après le premier changement (sinon la PWA montre une valeur
+    // par défaut fausse tant que l'utilisateur n'a pas touché au slider).
+    inputHandlers
+      .getVolumeState()
+      .then((state) => sendControlMessage({ type: "volumeState", state }))
+      .catch((error) => console.error("Failed to read initial volume state:", error));
     return;
   }
 
