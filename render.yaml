@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: glide-signaling
+    runtime: node
+    plan: free
+    branch: feat/webrtc-signaling
+    buildCommand: npm ci && npm run build:signaling
+    startCommand: node apps/signaling/dist/src/main.js
+    healthCheckPath: /health
