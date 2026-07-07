@@ -227,6 +227,14 @@ async function showPINWindow(): Promise<void> {
     }
     .steps li { margin-bottom: 6px; }
     .steps li::marker { color: #6EE7B7; font-weight: 600; }
+    .session-code {
+      color: #6A6D73;
+      font-size: 11px;
+      font-family: 'SFMono-Regular', Consolas, monospace;
+      margin-top: 16px;
+      word-break: break-all;
+      user-select: all;
+    }
     .qr-col { flex-shrink: 0; }
     img {
       width: 260px;
@@ -251,6 +259,7 @@ async function showPINWindow(): Promise<void> {
         <li>Scanne le QR code avec l'appareil photo de ton téléphone (ça ouvre directement la PWA)</li>
         <li>Entre le PIN affiché ci-dessus quand la PWA le demande</li>
       </ol>
+      <p class="session-code">Code de session (saisie manuelle) : ${getSessionId()}</p>
     </div>
     <div class="qr-col">
       <img src="${qrCodeDataURL}" alt="QR Code" />
