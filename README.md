@@ -2,14 +2,15 @@
 
 Remote PC control from iOS via local HTTPS server.
 
-> ⚠️ **Branch `feat/webrtc-signaling` is mid-migration.** The server now
-> connects to a signaling server and negotiates a direct WebRTC P2P
-> connection instead of running a local HTTPS/Socket.io server (no more
-> firewall rules, self-signed certificate, or `https://IP:3000`). The PWA
-> client (étape D) and the Vercel/Render deployment (étape E) aren't updated
-> yet, so **the app doesn't work end-to-end on this branch** until those land
-> — see `TODO.md` for the full plan. Everything below describes the old LAN
-> direct mode and will be rewritten once the migration is complete.
+> ⚠️ **Branch `feat/webrtc-signaling` is mid-migration.** The server and PWA
+> now negotiate a direct WebRTC P2P connection through a signaling server
+> instead of running a local HTTPS/Socket.io server (no more firewall rules,
+> self-signed certificate, or `https://IP:3000`). This works end-to-end
+> locally (verified), but nothing is deployed yet: the signaling server needs
+> a public host (Render) and the PWA needs to be served over real HTTPS
+> (Vercel) — see `TODO.md` étape E for the plan. Everything below describes
+> the old LAN direct mode and will be rewritten once the migration is
+> deployed and validated.
 
 ## Architecture
 
