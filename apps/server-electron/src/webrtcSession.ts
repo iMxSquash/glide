@@ -27,15 +27,38 @@ interface WebRtcHostDeps {
 }
 
 let sessionId = "";
+let signalingUrl = "";
+let getCurrentPin: (() => string) | null = null;
 let signalingSocket: SignalingSocket | null = null;
 let hiddenWindow: BrowserWindow | null = null;
 let isAuthenticated = false;
 let authAttempts = 0;
 let authBlockedUntil = 0;
+let isAccepting = true;
 let ipcHandlersRegistered = false;
+
+const peerStateListeners = new Set<(connected: boolean) => void>();
+let isPeerConnected = false;
 
 export function getSessionId(): string {
   return sessionId;
+}
+
+/**
+ * Notified when a phone completes (or loses) PIN auth over the DataChannel.
+ * Single WebRTC session in v1 : this is a 0/1 state, not a count.
+ * @param {(connected: boolean) => void} listener Called on every state change
+ * @returns {() => void} Unsubscribe function
+ */
+export function onPeerStateChange(listener: (connected: boolean) => void): () => void {
+  peerStateListeners.add(listener);
+  return () => peerStateListeners.delete(listener);
+}
+
+function setPeerConnected(connected: boolean): void {
+  if (isPeerConnected === connected) return;
+  isPeerConnected = connected;
+  for (const listener of peerStateListeners) listener(connected);
 }
 
 function createHiddenWindow(): BrowserWindow {
@@ -60,6 +83,7 @@ function sendControlMessage(message: ControlChannelServerMessage): void {
 
 function resetAuth(): void {
   isAuthenticated = false;
+  setPeerConnected(false);
 }
 
 function handleAuth(pin: string, currentPin: string): void {
@@ -77,6 +101,7 @@ function handleAuth(pin: string, currentPin: string): void {
     isAuthenticated = true;
     authAttempts = 0;
     sendControlMessage({ type: "authResult", success: true });
+    setPeerConnected(true);
     return;
   }
 
@@ -145,7 +170,7 @@ function handleInputMessage(raw: unknown): void {
   }
 }
 
-function registerIpcHandlers(getCurrentPin: () => string): void {
+function registerIpcHandlers(): void {
   if (ipcHandlersRegistered) return;
   ipcHandlersRegistered = true;
 
@@ -167,23 +192,14 @@ function registerIpcHandlers(getCurrentPin: () => string): void {
   });
 
   ipcMain.on("webrtc:datachannel-message", (_event, { channel, message }) => {
+    if (!getCurrentPin) return;
     if (channel === "control") handleControlMessage(message, getCurrentPin());
     else if (channel === "input") handleInputMessage(message);
   });
 }
 
-/**
- * Connects (outbound) to the signaling server and registers this PC as a
- * WebRTC host under a fresh, unguessable session id. Additive to the
- * existing LAN direct mode : both can run at the same time, nothing here
- * touches the HTTPS/socket.io server in main.ts.
- */
-export function startWebRtcHost(deps: WebRtcHostDeps): void {
-  sessionId = crypto.randomUUID();
-  hiddenWindow = createHiddenWindow();
-  registerIpcHandlers(deps.getCurrentPin);
-
-  signalingSocket = connectToSignaling(deps.signalingUrl, {
+function connectSignaling(): void {
+  signalingSocket = connectToSignaling(signalingUrl, {
     transports: ["websocket"],
   });
 
@@ -219,6 +235,44 @@ export function startWebRtcHost(deps: WebRtcHostDeps): void {
   signalingSocket.on("joinError", ({ reason }) => {
     console.warn("WebRTC signaling: join error", reason);
   });
+}
+
+/**
+ * Pauses/resumes accepting connections: mirrors the LAN mode's "Pause
+ * Server". While paused, the signaling connection is dropped entirely (the
+ * session room is destroyed server-side), so a phone can't join ; resuming
+ * reconnects and re-registers the *same* session id (the already-displayed
+ * QR code stays valid).
+ * @param {boolean} accepting Whether new connections should be accepted
+ */
+export function setAccepting(accepting: boolean): void {
+  isAccepting = accepting;
+  if (!accepting) {
+    hiddenWindow?.webContents.send("webrtc:close-peer");
+    resetAuth();
+    signalingSocket?.disconnect();
+    signalingSocket = null;
+  } else if (signalingUrl) {
+    connectSignaling();
+  }
+}
+
+export function isAcceptingConnections(): boolean {
+  return isAccepting;
+}
+
+/**
+ * Connects (outbound) to the signaling server and registers this PC as a
+ * WebRTC host under a fresh, unguessable session id.
+ */
+export function startWebRtcHost(deps: WebRtcHostDeps): void {
+  sessionId = crypto.randomUUID();
+  signalingUrl = deps.signalingUrl;
+  getCurrentPin = deps.getCurrentPin;
+  hiddenWindow = createHiddenWindow();
+  registerIpcHandlers();
+
+  connectSignaling();
 
   inputHandlers.onVolumeChange((state) => {
     if (isAuthenticated) sendControlMessage({ type: "volumeState", state });

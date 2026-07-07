@@ -2,6 +2,15 @@
 
 Remote PC control from iOS via local HTTPS server.
 
+> ⚠️ **Branch `feat/webrtc-signaling` is mid-migration.** The server now
+> connects to a signaling server and negotiates a direct WebRTC P2P
+> connection instead of running a local HTTPS/Socket.io server (no more
+> firewall rules, self-signed certificate, or `https://IP:3000`). The PWA
+> client (étape D) and the Vercel/Render deployment (étape E) aren't updated
+> yet, so **the app doesn't work end-to-end on this branch** until those land
+> — see `TODO.md` for the full plan. Everything below describes the old LAN
+> direct mode and will be rewritten once the migration is complete.
+
 ## Architecture
 
 ```
@@ -48,8 +57,8 @@ npm run dist:mac  # macOS .dmg
 # Install dependencies
 npm install
 
-# Dev mode (automatic firewall management)
-npm run dev:server    # Opens firewall + launches server + closes on exit
+# Dev mode
+npm run dev:server
 
 # Dev mode (client PWA standalone)
 npm run dev:client    # http://localhost:4200
@@ -157,21 +166,19 @@ npm run build:client  # Rebuild if needed
 
 ### Windows firewall not opening
 - Run app as Administrator first time
-- Or manually: `npm run setup:firewall` (requires admin)
 
 ## Project Structure
 
 ```
 glide/
 ├── apps/
-│   ├── server-electron/    # Electron server + firewall management
-│   └── client-pwa/         # React PWA
+│   ├── server-electron/    # Electron server
+│   ├── client-pwa/         # React PWA
+│   └── signaling/          # WebRTC signaling server (SDP/ICE relay)
 ├── scripts/
-│   ├── setup-autostart.cjs # Auto-start configuration
-│   ├── setup-firewall.cjs  # Manual firewall setup
-│   └── dev-server-wrapper.cjs # Dev mode with auto-firewall
+│   └── setup-autostart.cjs # Auto-start configuration
 ├── dist/
-│   └── apps/client-pwa/    # Built PWA (served by Electron)
+│   └── apps/client-pwa/    # Built PWA
 └── README.md
 ```
 

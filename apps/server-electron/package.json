@@ -14,15 +14,11 @@
     "dependencies": {
         "@glide/shared-types": "1.0.0",
         "@nut-tree-fork/nut-js": "^4.2.2",
-        "express": "^4.22.1",
         "loudness": "^0.4.2",
         "qrcode": "^1.5.4",
-        "selfsigned": "^5.5.0",
-        "socket.io": "^4.8.1",
         "socket.io-client": "^4.8.1"
     },
     "devDependencies": {
-        "@types/express": "^4.17.21",
         "@types/node": "^22.12.8",
         "@types/qrcode": "^1.5.6",
         "electron": "35.7.5",
@@ -40,15 +36,6 @@
             "target": "dmg",
             "category": "public.app-category.utilities"
         },
-        "extraResources": [
-            {
-                "from": "../../dist/apps/client-pwa",
-                "to": "dist/apps/client-pwa",
-                "filter": [
-                    "**/*"
-                ]
-            }
-        ],
         "asarUnpack": [
             "**/node_modules/loudness/**"
         ],
