@@ -21,6 +21,7 @@ const DOUBLE_TAP_DISTANCE_THRESHOLD = 30;
 const DRAG_HOLD_DELAY = 150;
 const SENSITIVITY_STORAGE_KEY = "glide-sensitivity";
 const DEFAULT_SENSITIVITY = 2;
+const INVERT_SCROLL_STORAGE_KEY = "glide-invert-scroll";
 // Le slider n'émet pas à chaque pixel glissé, pour ne pas flooder le socket.
 const SET_VOLUME_DEBOUNCE_MS = 150;
 const LAST_CONNECTION_KEY = "glide-last-connection";
@@ -71,6 +72,10 @@ export default function App() {
     return saved ? Number(saved) : DEFAULT_SENSITIVITY;
   });
   const sensitivityRef = useRef(sensitivity);
+  const [invertScroll, setInvertScroll] = useState<boolean>(() => {
+    return localStorage.getItem(INVERT_SCROLL_STORAGE_KEY) === "true";
+  });
+  const invertScrollRef = useRef(invertScroll);
   const socketRef = useRef<Socket | null>(null);
   const trackpadRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -107,6 +112,11 @@ export default function App() {
     sensitivityRef.current = sensitivity;
     localStorage.setItem(SENSITIVITY_STORAGE_KEY, String(sensitivity));
   }, [sensitivity]);
+
+  useEffect(() => {
+    invertScrollRef.current = invertScroll;
+    localStorage.setItem(INVERT_SCROLL_STORAGE_KEY, String(invertScroll));
+  }, [invertScroll]);
 
   // Envoie les deltas accumulés au serveur à cadence fixe (~60 Hz max) au lieu
   // d'un event par pointermove, pour éviter de flooder le socket.
@@ -511,9 +521,15 @@ export default function App() {
       const cx = e.nativeEvent.clientX;
       const cy = e.nativeEvent.clientY;
       if (prev) {
-        // Convention "natural scrolling" : le contenu suit le doigt.
-        pendingScrollRef.current.x += (prev.x - cx) / 2;
-        pendingScrollRef.current.y += (prev.y - cy) / 2;
+        // Convention "natural scrolling" : le contenu suit le doigt (inversable
+        // dans les paramètres pour ceux qui préfèrent la convention "classique").
+        // Multiplié par la sensibilité comme le curseur, sinon le scroll reste
+        // logé à un delta pixel brut alors que le curseur est bien plus rapide
+        // (sensibilité par défaut 2x) et le scroll paraît beaucoup trop léger.
+        const invert = invertScrollRef.current ? -1 : 1;
+        const scale = (invert * sensitivityRef.current) / 2;
+        pendingScrollRef.current.x += (prev.x - cx) * scale;
+        pendingScrollRef.current.y += (prev.y - cy) * scale;
       }
       twoFingerPosRef.current.set(e.pointerId, { x: cx, y: cy });
       return;
@@ -573,6 +589,19 @@ export default function App() {
     pointerStartPosRef.current.delete(e.pointerId);
     twoFingerPosRef.current.delete(e.pointerId);
     trackpadRef.current?.releasePointerCapture(e.pointerId);
+
+    // En sortie d'un scroll à 2 doigts, il ne reste qu'un doigt : lastPosRef
+    // n'a jamais été mis à jour pendant le scroll (seul twoFingerPosRef l'était),
+    // donc il pointe encore vers la position d'AVANT le scroll. Sans ce
+    // recalage, le prochain mouvement 1 doigt calcule un delta énorme entre
+    // cette vieille position et la position actuelle : le curseur téléporte.
+    if (wasTwoTouches && pointersRef.current.size === 1) {
+      const remainingId = Array.from(pointersRef.current.keys())[0];
+      const remainingPos = twoFingerPosRef.current.get(remainingId);
+      if (remainingPos) {
+        lastPosRef.current = { x: remainingPos.x, y: remainingPos.y };
+      }
+    }
 
     if (dragHoldTimerRef.current !== null) {
       window.clearTimeout(dragHoldTimerRef.current);
@@ -873,6 +902,20 @@ export default function App() {
               className="w-full"
               style={{ "--range-progress": `${((sensitivity - 0.5) / 3.5) * 100}%` } as React.CSSProperties}
             />
+            <div className="flex items-center justify-between mt-4">
+              <span className="text-secondary text-sm">Invert scroll direction</span>
+              <button
+                onClick={() => setInvertScroll((v) => !v)}
+                role="switch"
+                aria-checked={invertScroll}
+                aria-label="Invert scroll direction"
+                className={`w-12 h-7 rounded-full flex items-center px-1 transition-colors ${
+                  invertScroll ? "bg-accent justify-end" : "bg-background justify-start"
+                }`}
+              >
+                <span className="w-5 h-5 rounded-full bg-primary" />
+              </button>
+            </div>
             <button
               onClick={handleDisconnect}
               className="w-full mt-4 bg-background text-red-400 font-medium py-3 rounded-xl"

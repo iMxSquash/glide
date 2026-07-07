@@ -44,7 +44,7 @@ let isApplyingMousePosition = false;
 // Deltas de scroll (2 doigts) accumulés en pixels, convertis en "steps" nut-js
 // (l'unité de scrollUp/Down/Left/Right est OS-dépendante, pas le pixel).
 let pendingScrollDelta = { x: 0, y: 0 };
-const SCROLL_PIXELS_PER_STEP = 40;
+const SCROLL_PIXELS_PER_STEP = 1;
 
 async function applyPendingScroll(): Promise<void> {
   const stepsY = Math.trunc(pendingScrollDelta.y / SCROLL_PIXELS_PER_STEP);
