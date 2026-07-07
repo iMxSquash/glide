@@ -279,7 +279,15 @@ export function startWebRtcHost(deps: WebRtcHostDeps): void {
   hiddenWindow = createHiddenWindow();
   registerIpcHandlers();
 
-  connectSignaling();
+  // Attend que le renderer ait fini de charger avant d'ouvrir la connexion
+  // signaling : renderer.js enregistre l'écouteur IPC webrtc:start-as-host de
+  // façon synchrone au chargement de la page, mais ce chargement est async
+  // (loadFile). Sans cette attente, un peerJoined assez rapide pourrait
+  // arriver avant que le renderer soit prêt à le recevoir : webContents.send
+  // ne fait pas de queueing, le message serait perdu silencieusement.
+  hiddenWindow.webContents.once("did-finish-load", () => {
+    connectSignaling();
+  });
 
   inputHandlers.onVolumeChange((state) => {
     if (isAuthenticated) sendControlMessage({ type: "volumeState", state });
