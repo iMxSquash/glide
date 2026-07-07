@@ -626,7 +626,7 @@ export default function App() {
     );
 
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-6">
+      <div className="h-full bg-background flex items-center justify-center p-6">
         <div className="bg-surface rounded-2xl p-8 w-full max-w-sm">
           <h1 className="text-3xl font-bold text-accent mb-2">Glide</h1>
           <p className="text-secondary mb-6">
@@ -753,7 +753,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="h-full bg-background flex flex-col">
       <div className="flex items-center justify-between p-4">
         <h1 className="text-xl font-bold text-accent">Glide</h1>
         <div className="flex items-center gap-3">
@@ -796,7 +796,10 @@ export default function App() {
       </div>
 
       {showKeyboard && (
-        <div className="fixed inset-0 bg-background/95 z-50 flex flex-col p-6">
+        <div
+          className="fixed inset-0 bg-background/95 z-50 flex flex-col p-6"
+          style={{ paddingTop: "calc(env(safe-area-inset-top) + 1.5rem)" }}
+        >
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-primary">Keyboard</h2>
             <button
@@ -868,6 +871,7 @@ export default function App() {
                 setSensitivity(Number(e.target.value))
               }
               className="w-full"
+              style={{ "--range-progress": `${((sensitivity - 0.5) / 3.5) * 100}%` } as React.CSSProperties}
             />
             <button
               onClick={handleDisconnect}
@@ -942,6 +946,7 @@ export default function App() {
               handleVolumeSliderChange(Number(e.target.value))
             }
             className="flex-1"
+            style={{ "--range-progress": `${volume}%` } as React.CSSProperties}
           />
           <button
             onClick={() => socketRef.current?.emit("volumeUp")}

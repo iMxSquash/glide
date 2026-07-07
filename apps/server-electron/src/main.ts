@@ -175,7 +175,7 @@ interface CertificateMeta {
  * @param {string} ip Local IP address to embed in the certificate's SAN
  * @returns {{ key: string; cert: string }} TLS key/cert pair
  */
-function getOrCreateCertificate(ip: string): { key: string; cert: string } {
+async function getOrCreateCertificate(ip: string): Promise<{ key: string; cert: string }> {
   const userDataDir = app.getPath("userData");
   const certPath = path.join(userDataDir, "cert.pem");
   const keyPath = path.join(userDataDir, "key.pem");
@@ -201,7 +201,7 @@ function getOrCreateCertificate(ip: string): { key: string; cert: string } {
     { name: "commonName", value: ip },
     { name: "organizationName", value: "Glide" },
   ];
-  const pems = selfsigned.generate(attrs, {
+  const pems = await selfsigned.generate(attrs, {
     days: 365,
     keySize: 2048,
     algorithm: "sha256",
@@ -392,7 +392,7 @@ function listenWithPortFallback(
  * Start Socket.io server (HTTPS with self-signed cert)
  */
 async function startServer(): Promise<void> {
-  const { key, cert } = getOrCreateCertificate(localIP);
+  const { key, cert } = await getOrCreateCertificate(localIP);
 
   const expressApp = express();
 
@@ -617,7 +617,7 @@ async function showPINWindow(): Promise<void> {
 
   mainWindow = new BrowserWindow({
     width: 400,
-    height: 550,
+    height: 720,
     frame: false,
     resizable: false,
     alwaysOnTop: true,
@@ -647,17 +647,23 @@ async function showPINWindow(): Promise<void> {
   <meta charset="UTF-8">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; }
     body {
       background: #0E0F12;
       color: #F2F2F3;
       font-family: 'Segoe UI', system-ui, sans-serif;
       display: flex;
-      align-items: center;
+      align-items: safe center;
       justify-content: center;
-      height: 100vh;
+      min-height: 100vh;
       width: 100vw;
       padding: 30px;
+      overflow-y: auto;
     }
+    ::-webkit-scrollbar { width: 8px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #2A2D34; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #383C45; }
     .container { text-align: center; width: 100%; }
     h1 {
       color: #6EE7B7;
