@@ -1,0 +1,29 @@
+{
+    "name": "signaling",
+    "$schema": "../../node_modules/nx/schemas/project-schema.json",
+    "sourceRoot": "apps/signaling/src",
+    "projectType": "application",
+    "targets": {
+        "build": {
+            "executor": "@nx/js:tsc",
+            "outputs": [
+                "{options.outputPath}"
+            ],
+            "options": {
+                "outputPath": "apps/signaling/dist",
+                "main": "apps/signaling/src/main.ts",
+                "tsConfig": "apps/signaling/tsconfig.json"
+            }
+        },
+        "serve": {
+            "executor": "nx:run-commands",
+            "dependsOn": [
+                "build"
+            ],
+            "options": {
+                "command": "node dist/src/main.js",
+                "cwd": "apps/signaling"
+            }
+        }
+    }
+}

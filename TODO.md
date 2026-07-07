@@ -114,22 +114,26 @@ L'architecture qui coche les 4 contraintes : **WebRTC DataChannel en P2P sur le 
 - ⚠️ Limite connue : sur un WiFi avec **isolation client** (réseaux invités, hôtels), le P2P est bloqué — mais la connexion directe actuelle l'est tout autant, donc rien de perdu. Un fallback "forward via le serveur" pourra s'ajouter en v2 si besoin.
 - Internet reste nécessaire pour charger la PWA et pour le handshake (pas pour le trafic souris). Acceptable : un PC sans internet est un cas marginal.
 
-### Étape A — Release GitHub du .exe actuel (aucun changement de code)
+### Étape A — Release GitHub du .exe actuel (aucun changement de code) ✅ Fait
 
-- [ ] **Créer un nouveau tag sur HEAD** : le tag `v1.0.0` existe déjà mais pointe sur un ancien commit (`f54607e`), pas sur la v1 finale (`d241808`). Faire `git tag v1.1.0 && git push origin v1.1.0` → le workflow `release.yml` builde le `.exe` et publie la GitHub Release automatiquement.
-- [ ] Vérifier le run dans l'onglet **Actions** du repo (jamais exécuté pour de vrai jusqu'ici) et corriger si le build casse.
-- [ ] Télécharger le `.exe` depuis la release et le tester sur une machine (installation, PIN, connexion téléphone).
-- [ ] Soigner les release notes (le template dans `release.yml` mentionne encore "boutons volume iOS" — obsolète depuis P0.3).
+- [x] **Créer un nouveau tag sur HEAD** : l'ancien tag/release `v1.0.0` (qui pointait sur `f54607e`, pré-P0/P1/P2, jamais vraiment fonctionnel) a été supprimé puis recréé sur le commit final (logo + fixes inclus) — `git tag -f v1.0.0 && git push origin v1.0.0` → le workflow `release.yml` a buildé le `.exe` et publié la GitHub Release.
+- [x] Vérifier le run dans l'onglet **Actions** du repo (jamais exécuté pour de vrai jusqu'ici) et corriger si le build casse. Un vrai bug a été trouvé et corrigé : `electron-builder` refuse un `"electron": "^35.7.5"` en range dans `package.json` (doit être une version exacte pour télécharger le bon binaire) → pin sur `"35.7.5"`.
+- [ ] Télécharger le `.exe` depuis la release et le tester sur une machine (installation, PIN, connexion téléphone). — non fait, nécessite du matériel physique.
+- [x] Soigner les release notes (le template mentionnait encore le flow IP:3000 à la main d'avant P0/P1/P2) : mis à jour pour refléter le flow QR-first, trackpad/scroll/drag/clavier/volume, reconnexion auto, wake lock.
+- [x] Nouveau logo (mark "swoosh" mint `#6EE7B7` sur fond `#0E0F12`, remplace l'ancien curseur) : régénéré sur toutes les icônes (PWA, `.exe`, tray) et intégré dans l'UI (client PWA + fenêtre PIN Electron) à la place du texte seul "Glide".
+- [x] **GitHub Pages désactivé** : plus la peine de maintenir un déploiement cassé (le `base: "/"` de `vite.config.ts` ne matchait pas le sous-chemin `/glide/` servi par GitHub Pages, d'où l'icône générique "G" observée). Site Pages, historique des déploiements et environnement `github-pages` supprimés via l'API GitHub ; workflow `.github/workflows/deploy-pwa.yml` supprimé du repo (anticipe le point équivalent de l'étape E ci-dessous).
 
-### Étape B — Le serveur de signaling (`apps/signaling`)
+### Étape B — Le serveur de signaling (`apps/signaling`) ✅ Fait
 
-- [ ] Créer `apps/signaling` : petit serveur Node + socket.io (pas d'Electron, pas de nut-js), ~100 lignes. Logique :
-  - Le PC émet `registerHost(sessionId)` → crée la room (re-register avec le même `sessionId` autorisé pour la reconnexion après coupure).
-  - Le téléphone émet `joinSession(sessionId)` → le signaling relaie les messages `offer`/`answer`/`iceCandidate` entre les deux sockets de la room, rien d'autre.
-  - Le **PIN ne transite jamais par le signaling** : il sera validé sur le DataChannel une fois le P2P établi (voir étape C).
-  - Cleanup : room détruite quand le PC se déconnecte (+ notifier le téléphone), heartbeat/timeout.
-  - Sécurité : `sessionId` non devinable (généré côté PC via `crypto.randomUUID()`), limite de joins par IP pour éviter le spam.
-- [ ] Étendre `@glide/shared-types` : events de signaling (`registerHost`, `joinSession`, `offer`, `answer`, `iceCandidate`, `peerLeft`…) + le protocole des messages DataChannel (auth PIN, puis les events existants `mouseDelta`, `scroll`, `leftClick`, `setVolume`, `volumeState`… sérialisés en JSON — ils ne passent plus par socket.io).
+- [x] Créer `apps/signaling` : petit serveur Node + socket.io (pas d'Electron, pas de nut-js). Logique implémentée :
+  - Le PC émet `registerHost(sessionId)` → crée la room (re-register avec le même `sessionId` accepté pour la reconnexion après coupure : l'ancien téléphone connecté reçoit `peerLeft` et doit rejoindre à nouveau).
+  - Le téléphone émet `joinSession(sessionId)` → le signaling relaie `offer`/`answer`/`iceCandidate` entre les deux sockets de la room, rien d'autre.
+  - Le **PIN ne transite jamais par le signaling** (voir étape C).
+  - Cleanup : room détruite quand le PC se déconnecte (+ `peerLeft` au téléphone) ; pas de heartbeat applicatif nécessaire, le ping/pong intégré de socket.io déclenche déjà `disconnect` sur coupure silencieuse.
+  - Sécurité : `sessionId` = UUID v4 (généré côté PC, non devinable), rate-limit 20 `joinSession` invalides / IP / 5 min (lit `x-forwarded-for` en priorité, pertinent derrière le proxy Render). Route `GET /health` pour le health check Render.
+  - Validé par un smoke test end-to-end (registerHost/joinSession/offer/answer/iceCandidate/disconnect/reconnexion/session inconnue) — script jetable, pas commité.
+- [x] Étendre `@glide/shared-types` : `SignalingClientToServerEvents`/`SignalingServerToClientEvents` (`registerHost`, `joinSession`, `offer`, `answer`, `iceCandidate`, `hostRegistered`, `joinError`, `peerJoined`, `peerLeft`) + le protocole des messages DataChannel (`ControlChannelClientMessage`/`ControlChannelServerMessage`/`InputChannelMessage`, discriminated unions sur `type`, sérialisés en JSON — ils ne passent plus par socket.io une fois le P2P établi).
+- [x] Scripts racine `dev:signaling`/`build:signaling` (mêmes conventions nx que `server-electron`/`client-pwa`). `apps/signaling` n'est pas inclus dans `build:all`/`dist:win` (c'est un déploiement séparé, pas embarqué dans l'exe).
 
 ### Étape C — Adapter le serveur Electron (WebRTC côté PC)
 
@@ -154,7 +158,7 @@ L'architecture qui coche les 4 contraintes : **WebRTC DataChannel en P2P sur le 
 
 - [ ] Déployer le signaling sur **Render free** (Web Service, pas de carte bancaire requise) : `npm start`, port fourni via `$PORT`, health check pour limiter les faux spin-down. Noter l'URL publique (ex. `glide-signaling.onrender.com`). Trafic quasi nul (handshakes uniquement) → free tier largement suffisant, spin-down 15 min / réveil ~1 min accepté.
 - [ ] Déployer la PWA sur Vercel : importer le repo GitHub, build command `npx nx build client-pwa`, output `dist/apps/client-pwa`, variable `VITE_SIGNALING_URL`. Ajouter un `vercel.json` avec le rewrite SPA (`/(.*)` → `/index.html`) et vérifier que `manifest.webmanifest` + `sw.js` sont servis avec les bons headers.
-- [ ] Supprimer (ou désactiver) `.github/workflows/deploy-pwa.yml` (GitHub Pages) pour ne pas maintenir deux versions de la PWA — Vercel se redéploie tout seul à chaque push sur `main`.
+- [x] Supprimer (ou désactiver) `.github/workflows/deploy-pwa.yml` (GitHub Pages) pour ne pas maintenir deux versions de la PWA — fait en avance (étape A) : workflow supprimé, site Pages/déploiements/environnement nettoyés côté GitHub. Vercel se redéploiera tout seul à chaque push sur `main`.
 - [ ] Vérifier l'installabilité PWA depuis le domaine Vercel (vrai HTTPS → plus aucun souci de certificat, y compris en PWA installée iOS 🎉).
 
 ### Étape F — Validation & release finale
@@ -187,7 +191,9 @@ L'architecture qui coche les 4 contraintes : **WebRTC DataChannel en P2P sur le 
 5. ~~**Scroll 2 doigts + drag + clavier + QR-first + erreurs + déconnexion + pull-to-refresh** (P1).~~ ✅ Fait
 6. ~~**Sécurité — trancher HTTPS vs HTTP+WS local**~~ ✅ Fait (HTTPS conservé, PIN retiré de l'UI)
 7. ~~**Onboarding, guidage certificat, typage Socket.io, cleanup libs, README Android**~~ ✅ Fait
-8. **Tests sur devices réels** (P2, seul point restant), puis release. ← prochaine étape
-9. **Mise en ligne** (section 🚀) : release `.exe` (étape A, immédiat), puis signaling + WebRTC + Vercel (étapes B→F).
+8. **Tests sur devices réels** (P2, seul point restant). — toujours en attente de matériel physique.
+9. ~~**Mise en ligne — étape A** : release `.exe` v1.0.0 (tag, build, release notes, fix electron-builder, nouveau logo, cleanup GitHub Pages).~~ ✅ Fait
+10. ~~**Mise en ligne — étape B** : serveur de signaling `apps/signaling` (rooms, relais SDP/ICE, rate-limit, health check) + types partagés.~~ ✅ Fait
+11. **Mise en ligne — étapes C→F** : WebRTC côté Electron (étape C) + côté PWA (étape D) + déploiements Render/Vercel (étape E) + validation (étape F). Étapes C et D réécrivent la couche transport des deux apps existantes (remplacent la connexion directe HTTPS/socket.io) — checkpoint avec Elwen avant de commencer vu l'ampleur. ← prochaine étape
 
-> **P0, P1 et la quasi-totalité du P2 sont traités.** Testé par build + typecheck (`tsc --noEmit`) sur les deux apps après chaque changement. Seul le P2 "tests sur devices réels" (matrice iPhone/Android/Windows physique) et l'exécution effective des workflows GitHub Actions restent hors de portée sans matériel/CI réels — tout le reste (onboarding, typage, cleanup, README, `@types/express`) est fait.
+> **P0, P1 et la quasi-totalité du P2 sont traités, et les étapes A+B de la mise en ligne aussi.** Le workflow `release.yml` a maintenant vraiment tourné (contrairement à avant) : ça a révélé et corrigé un bug réel (`electron-builder` exige une version Electron fixe, pas un range semver). La release `v1.0.0` est publiée avec le `.exe`, GitHub Pages est désactivé et nettoyé (remplacé par Vercel dans la suite du plan), le logo a été mis à jour partout (icônes + UI), et le serveur de signaling WebRTC (`apps/signaling`) est écrit et testé (smoke test end-to-end). Seul le P2 "tests sur devices réels" (matrice iPhone/Android/Windows physique) et le test manuel de l'installeur `.exe` restent hors de portée sans matériel physique — tout le reste est fait. Prochaine étape : rewiring WebRTC côté Electron (C) et PWA (D), puis déploiements (E) et validation (F).
