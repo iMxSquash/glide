@@ -6,6 +6,12 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), et ce p
 
 ## [Unreleased]
 
+### Changed
+- Mise à jour de React et react-dom vers 19 (`client-pwa`)
+- Mise à jour de Nx et `@nx/workspace` vers 23
+- Mise à jour de `@zxing/library` vers 0.23
+- Mise à jour des GitHub Actions (`checkout`, `setup-node`, `upload-artifact`, `download-artifact`, `action-gh-release`)
+
 ## [1.1.2] - 2026-07-08
 
 ### Added
