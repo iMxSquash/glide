@@ -16,11 +16,12 @@ Voir le [README](README.md#quick-start) pour l'installation et le lancement en l
 
 ```bash
 npm install
+npm run lint               # ESLint sur tout le monorepo
 npm run build:all          # build client + server
 npm run build:signaling    # build du serveur de signaling
 ```
 
-Il n'y a pas encore de suite de tests ni de lint automatisé sur ce projet : le build (`tsc`) est la seule vérification statique disponible pour l'instant.
+Il n'y a pas encore de suite de tests automatisée sur ce projet : lint + build (`tsc`) sont les seules vérifications statiques disponibles pour l'instant.
 
 ## Standards de code
 

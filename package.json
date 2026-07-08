@@ -19,13 +19,20 @@
         "dist:win": "npm run build:all && cd apps/server-electron && npm run dist",
         "dist:mac": "npm run build:all && cd apps/server-electron && npm run dist:mac",
         "setup:autostart": "node scripts/setup-autostart.cjs enable",
-        "remove:autostart": "node scripts/setup-autostart.cjs disable"
+        "remove:autostart": "node scripts/setup-autostart.cjs disable",
+        "lint": "eslint ."
     },
     "devDependencies": {
+        "@eslint/js": "^10.0.1",
         "@nx/react": "^22.4.5",
         "@nx/vite": "^22.4.5",
         "@nx/workspace": "^22.4.5",
+        "eslint": "^10.6.0",
+        "eslint-plugin-react-hooks": "^7.1.1",
+        "eslint-plugin-react-refresh": "^0.5.3",
+        "globals": "^17.7.0",
         "nx": "^22.4.5",
-        "typescript": "^5.8.3"
+        "typescript": "^5.8.3",
+        "typescript-eslint": "^8.63.0"
     }
 }

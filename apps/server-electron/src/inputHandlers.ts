@@ -14,7 +14,7 @@ let pendingMouseDelta: Delta2D = { x: 0, y: 0 };
 let cursorPosition: { x: number; y: number } | null = null;
 let isApplyingMousePosition = false;
 
-let pendingScrollDelta: Delta2D = { x: 0, y: 0 };
+const pendingScrollDelta: Delta2D = { x: 0, y: 0 };
 
 // Souris/clavier/volume sont des ressources uniques du PC, partagées par tous
 // les transports actifs (LAN direct et/ou WebRTC) : la boucle de tick ne doit
