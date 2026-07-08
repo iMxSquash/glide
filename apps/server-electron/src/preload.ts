@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer } from "electron";
 
 contextBridge.exposeInMainWorld("glide", {
-  send: (channel: string, data: any) => {
+  send: (channel: string, data: unknown) => {
     const validChannels = [
       "mouseDelta",
       "leftClick",

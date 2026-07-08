@@ -329,7 +329,7 @@ export default function App() {
               }
             },
           );
-        } catch (err) {
+        } catch {
           alert("Camera access denied");
           setIsScanning(false);
         }
