@@ -1,31 +1,32 @@
 {
-    "$schema": "./node_modules/nx/schemas/nx-schema.json",
-    "defaultBase": "main",
-    "namedInputs": {
-        "default": [
-            "{projectRoot}/**/*"
-        ],
-        "production": [
-            "!{projectRoot}/**/*.spec.ts"
-        ]
+  "$schema": "./node_modules/nx/schemas/nx-schema.json",
+  "defaultBase": "main",
+  "namedInputs": {
+    "default": [
+      "{projectRoot}/**/*"
+    ],
+    "production": [
+      "!{projectRoot}/**/*.spec.ts"
+    ]
+  },
+  "targetDefaults": {
+    "build": {
+      "cache": true,
+      "dependsOn": [
+        "^build"
+      ]
     },
-    "targetDefaults": {
-        "build": {
-            "cache": true,
-            "dependsOn": [
-                "^build"
-            ]
-        },
-        "serve": {
-            "cache": false
-        }
-    },
-    "generators": {
-        "@nx/react": {
-            "application": {
-                "bundler": "vite",
-                "style": "css"
-            }
-        }
+    "serve": {
+      "cache": false
     }
+  },
+  "generators": {
+    "@nx/react": {
+      "application": {
+        "bundler": "vite",
+        "style": "css"
+      }
+    }
+  },
+  "analytics": true
 }
