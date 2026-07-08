@@ -26,7 +26,7 @@
         "@eslint/js": "^10.0.1",
         "@nx/react": "^22.4.5",
         "@nx/vite": "^22.4.5",
-        "@nx/workspace": "^22.4.5",
+        "@nx/workspace": "^23.0.1",
         "eslint": "^10.6.0",
         "eslint-plugin-react-hooks": "^7.1.1",
         "eslint-plugin-react-refresh": "^0.5.3",
