@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { ControlChannelClientMessage, VolumeState } from "@glide/shared-types";
+import { debounce } from "../lib/debounce";
 
 // Le slider n'émet pas à chaque pixel glissé, pour ne pas flooder le canal.
 const SET_VOLUME_DEBOUNCE_MS = 150;
@@ -22,21 +23,26 @@ export function useVolumeControl(
 ): UseVolumeControl {
   const [volume, setVolume] = useState(50);
   const [muted, setMuted] = useState(false);
-  const volumeDebounceRef = useRef<number | null>(null);
+  // sendControl a une identité stable (useCallback([]) dans useGlideConnection),
+  // créer le debounce une seule fois est donc sûr.
+  const debouncedSendVolumeRef = useRef<ReturnType<typeof debounce<[number]>> | null>(null);
+  if (!debouncedSendVolumeRef.current) {
+    debouncedSendVolumeRef.current = debounce(
+      (value: number) => sendControl({ type: "setVolume", value }),
+      SET_VOLUME_DEBOUNCE_MS,
+    );
+  }
 
   useEffect(() => {
     setVolume(connectionVolume.volume);
     setMuted(connectionVolume.muted);
   }, [connectionVolume]);
 
+  useEffect(() => () => debouncedSendVolumeRef.current?.cancel(), []);
+
   const handleVolumeSliderChange = (value: number) => {
     setVolume(value);
-    if (volumeDebounceRef.current !== null) {
-      window.clearTimeout(volumeDebounceRef.current);
-    }
-    volumeDebounceRef.current = window.setTimeout(() => {
-      sendControl({ type: "setVolume", value });
-    }, SET_VOLUME_DEBOUNCE_MS);
+    debouncedSendVolumeRef.current?.(value);
   };
 
   return { volume, muted, handleVolumeSliderChange };
