@@ -8,6 +8,13 @@ export default defineConfig({
   server: {
     host: true,
   },
+  build: {
+    // outDir (dist/apps/client-pwa) is outside the project root, so Vite
+    // does not empty it by default: stale hashed chunks from previous
+    // builds would otherwise pile up and get precached by the service
+    // worker (generateSW globs the whole outDir).
+    emptyOutDir: true,
+  },
   plugins: [
     react(),
     VitePWA({
