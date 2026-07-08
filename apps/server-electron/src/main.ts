@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Tray, Menu, nativeImage } from "electron";
+import { app, BrowserWindow, Tray, Menu, nativeImage, shell } from "electron";
 import * as fs from "fs";
 import * as path from "path";
 import * as QRCode from "qrcode";
@@ -23,6 +23,8 @@ const DEFAULT_SIGNALING_URL = app.isPackaged
 const DEFAULT_PWA_URL = app.isPackaged
   ? "https://glide.elwen.dev"
   : "http://localhost:4200";
+
+const GITHUB_URL = "https://github.com/iMxSquash/glide";
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
@@ -120,6 +122,17 @@ function createTray(): void {
         click: (menuItem) => {
           app.setLoginItemSettings({ openAtLogin: menuItem.checked });
         },
+      },
+      { type: "separator" },
+      {
+        label: "View on GitHub",
+        click: () => {
+          shell.openExternal(GITHUB_URL);
+        },
+      },
+      {
+        label: `Version ${app.getVersion()}`,
+        enabled: false,
       },
       { type: "separator" },
       {
