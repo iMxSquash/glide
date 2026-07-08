@@ -1,4 +1,4 @@
-import type { Dispatch, SetStateAction } from "react";
+import { useState, type Dispatch, type SetStateAction } from "react";
 import { GlideLogo } from "./GlideLogo";
 import { QrScanner } from "./QrScanner";
 import { PinEntry } from "./PinEntry";
@@ -39,6 +39,8 @@ export function ConnectScreen({
   handleConnect,
   disconnect,
 }: ConnectScreenProps) {
+  const [cameraError, setCameraError] = useState<string | null>(null);
+
   const qrIcon = (
     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path
@@ -82,6 +84,7 @@ export function ConnectScreen({
               setPendingSessionId(sessionId);
             }}
             onCancel={() => setIsScanning(false)}
+            onError={setCameraError}
           />
         ) : showManualEntry ? (
           <>
@@ -156,8 +159,17 @@ export function ConnectScreen({
           </div>
         ) : (
           <>
+            {cameraError && (
+              <div className="bg-background text-red-400 text-sm p-3 rounded-xl mb-4 border border-red-400/30">
+                {cameraError}
+              </div>
+            )}
+
             <button
-              onClick={() => setIsScanning(true)}
+              onClick={() => {
+                setCameraError(null);
+                setIsScanning(true);
+              }}
               className="w-full bg-accent text-background font-medium py-4 rounded-xl flex items-center justify-center gap-2 mb-3"
             >
               {qrIcon}

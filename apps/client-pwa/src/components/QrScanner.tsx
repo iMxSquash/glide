@@ -5,9 +5,10 @@ import { parseSessionIdFromHash } from "../lib/session";
 interface QrScannerProps {
   onScanned: (sessionId: string) => void;
   onCancel: () => void;
+  onError: (message: string) => void;
 }
 
-export function QrScanner({ onScanned, onCancel }: QrScannerProps) {
+export function QrScanner({ onScanned, onCancel, onError }: QrScannerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const codeReaderRef = useRef<BrowserQRCodeReader | null>(null);
 
@@ -38,8 +39,9 @@ export function QrScanner({ onScanned, onCancel }: QrScannerProps) {
             }
           },
         );
-      } catch {
-        alert("Camera access denied");
+      } catch (err) {
+        console.error("Camera access failed", err);
+        onError("Camera access denied. Allow camera access in your browser settings and try again.");
         onCancel();
       }
     };
