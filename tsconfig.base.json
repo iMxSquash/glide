@@ -6,15 +6,14 @@
             "DOM"
         ],
         "module": "ESNext",
-        "moduleResolution": "node",
+        "moduleResolution": "bundler",
         "esModuleInterop": true,
         "skipLibCheck": true,
         "strict": true,
         "forceConsistentCasingInFileNames": true,
         "resolveJsonModule": true,
         "isolatedModules": true,
-        "jsx": "react-jsx",
-        "baseUrl": "."
+        "jsx": "react-jsx"
     },
     "exclude": [
         "node_modules",
