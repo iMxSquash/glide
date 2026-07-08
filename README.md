@@ -8,9 +8,8 @@
 *Turn your phone into a wireless trackpad for your PC — no cables, no port forwarding, no certificates to accept.*
 
 [![Release](https://img.shields.io/github/v/release/iMxSquash/glide?style=flat-square)](https://github.com/iMxSquash/glide/releases/latest)
-[![Build Status](https://img.shields.io/github/actions/workflow/status/iMxSquash/glide/release.yml?style=flat-square&label=Release)](https://github.com/iMxSquash/glide/actions/workflows/release.yml)
-[![Node.js](https://img.shields.io/badge/Node.js->=20-3c873a?style=flat-square)](https://nodejs.org)
-[![TypeScript](https://img.shields.io/badge/TypeScript-blue?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
+[![GitHub release (latest by date including pre-releases)](https://img.shields.io/github/downloads-pre/iMxSquash/glide/total)](https://github.com/iMxSquash/glide/releases)
+[![GitHub release (latest by date including pre-releases)](https://img.shields.io/github/downloads-pre/iMxSquash/glide/latest/total)](https://github.com/iMxSquash/glide/releases/latest)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-blue?style=flat-square)](#quick-start)
 
 [Features](#features) • [Quick start](#quick-start) • [Architecture](#architecture) • [Development](#development) • [Troubleshooting](#troubleshooting)
@@ -93,6 +92,9 @@ The PC and the phone each open an *outbound* connection to the signaling server 
 
 > [!IMPORTANT]
 > Both devices must be on the **same WiFi network**. Some guest/hotel networks enable client isolation, which blocks the direct connection between devices.
+
+> [!NOTE]
+> The PWA requires a recent browser (Safari 16.4+, Chrome/Edge 111+, Firefox 128+) for both the trackpad's WebRTC/touch handling and the Tailwind CSS v4 build. Any iPhone still receiving iOS updates meets this.
 
 ## Development
 

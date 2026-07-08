@@ -19,6 +19,13 @@
                 "buildTarget": "client-pwa:build",
                 "port": 5173
             }
+        },
+        "test": {
+            "executor": "nx:run-commands",
+            "options": {
+                "command": "npm run test",
+                "cwd": "apps/client-pwa"
+            }
         }
     }
 }

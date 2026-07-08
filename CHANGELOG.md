@@ -6,6 +6,14 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), et ce p
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-07-08
+
+### Changed
+- Mise à jour de React et react-dom vers 19 (`client-pwa`)
+- Mise à jour de Nx et `@nx/workspace` vers 23
+- Mise à jour de `@zxing/library` vers 0.23
+- Mise à jour des GitHub Actions (`checkout`, `setup-node`, `upload-artifact`, `download-artifact`, `action-gh-release`)
+
 ## [1.1.2] - 2026-07-08
 
 ### Added
@@ -45,7 +53,8 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), et ce p
 - Gestion du certificat auto-signé et du firewall Windows
 - PWA installable sur iPhone/Android
 
-[Unreleased]: https://github.com/iMxSquash/glide/compare/v1.1.2...HEAD
+[Unreleased]: https://github.com/iMxSquash/glide/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/iMxSquash/glide/compare/v1.1.2...v1.2.0
 [1.1.2]: https://github.com/iMxSquash/glide/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/iMxSquash/glide/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/iMxSquash/glide/compare/v1.0.0...v1.1.0
