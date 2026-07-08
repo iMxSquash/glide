@@ -8,9 +8,8 @@
 *Turn your phone into a wireless trackpad for your PC — no cables, no port forwarding, no certificates to accept.*
 
 [![Release](https://img.shields.io/github/v/release/iMxSquash/glide?style=flat-square)](https://github.com/iMxSquash/glide/releases/latest)
-[![Build Status](https://img.shields.io/github/actions/workflow/status/iMxSquash/glide/release.yml?style=flat-square&label=Release)](https://github.com/iMxSquash/glide/actions/workflows/release.yml)
-[![Node.js](https://img.shields.io/badge/Node.js->=24-3c873a?style=flat-square)](https://nodejs.org)
-[![TypeScript](https://img.shields.io/badge/TypeScript-blue?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
+![GitHub release (latest by date including pre-releases)](https://img.shields.io/github/downloads-pre/iMxSquash/glide/total)
+![GitHub release (latest by date including pre-releases)](https://img.shields.io/github/downloads-pre/iMxSquash/glide/latest/total)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-blue?style=flat-square)](#quick-start)
 
 [Features](#features) • [Quick start](#quick-start) • [Architecture](#architecture) • [Development](#development) • [Troubleshooting](#troubleshooting)
