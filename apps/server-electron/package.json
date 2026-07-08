@@ -23,7 +23,7 @@
         "@types/qrcode": "^1.5.6",
         "electron": "35.7.5",
         "electron-builder": "^26.7.0",
-        "typescript": "^5.8.3"
+        "typescript": "^6.0.3"
     },
     "build": {
         "appId": "com.glide.remote",
