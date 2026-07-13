@@ -23,13 +23,13 @@ Décisions actées : landing dans ce repo (nouvelle app Nx `apps/landing`), dép
 
 ### Phase 2 — Contenu (une page, en anglais)
 
-- [ ] **Hero** : tagline du README, visuel phone + PC, CTA "Download for Windows/macOS".
-- [ ] **Features** : les 6 features du README (trackpad multitouch, volume, clavier, PWA, P2P chiffré, zéro config).
-- [ ] **How it works** : 3 étapes (installer, scanner le QR, entrer le PIN) + schéma P2P vulgarisé.
-- [ ] **Download** : fetch de l'API GitHub releases pour afficher la version à jour, liens statiques en fallback.
-- [ ] **Privacy/Security** : le signaling ne voit jamais les inputs (argument fort, citable pour le GEO).
-- [ ] **FAQ** : 5-6 questions (compatibilité, réseau, sécurité…), base du JSON-LD `FAQPage`.
-- [ ] Footer : GitHub, licence, lien vers l'app (`app.glide.elwen.dev`).
+- [x] **Hero** : tagline du README, logo réutilisé, CTA "Download for free" + lien GitHub.
+- [x] **Features** : les 6 features du README (trackpad multitouch, volume, clavier, PWA, P2P chiffré, zéro config).
+- [x] **How it works** : 3 étapes (installer, scanner le QR, entrer le PIN) + explication P2P vulgarisée.
+- [x] **Download** : fetch de l'API GitHub releases (`main.ts`) pour version + liens `.exe`/`.dmg` réels, liens statiques `releases/latest` en fallback si l'API échoue ou si l'asset n'existe pas encore (macOS aujourd'hui).
+- [x] **Privacy/Security** : le signaling ne voit jamais les inputs (argument fort, citable pour le GEO).
+- [x] **FAQ** : 6 questions (compatibilité, sécurité, hors-LAN, réseaux avec isolation, licence) en `<details>` natifs, base du futur JSON-LD `FAQPage`.
+- [x] Footer : GitHub, licence GPL-3.0-or-later. Lien vers `app.glide.elwen.dev` différé à la phase 5 (le sous-domaine n'existe pas encore).
 
 ### Phase 3 — SEO / GEO
 
