@@ -52,6 +52,13 @@ export default tseslint.config(
     },
   },
   {
+    // Landing page: plain browser TS, no React.
+    files: ["apps/landing/**/*.ts"],
+    languageOptions: {
+      globals: globals.browser,
+    },
+  },
+  {
     // Electron preload script for the hidden WebRTC renderer window: plain CommonJS, runs under Node.
     files: ["apps/server-electron/assets/webrtc/preload.js"],
     languageOptions: {
