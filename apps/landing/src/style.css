@@ -20,15 +20,40 @@
     --radius-2xl: 16px;
 }
 
+/* Theme is driven by [data-theme] on <html>, set synchronously by the inline
+ * head script (no flash) and toggled by the light/dark button in main.ts.
+ * Dark is the default per DESIGN_SYSTEM.md; this media query is only a
+ * no-JS fallback for the very first paint. */
 @media (prefers-color-scheme: light) {
-    @theme {
+    :root:not([data-theme]) {
         --color-background: #F7F8FA;
         --color-surface: #FFFFFF;
         --color-surface-light: #EEF0F4;
         --color-primary: #0E0F12;
         --color-secondary: #6B7280;
         --color-disabled: #A1A6B0;
+        color-scheme: light;
     }
+}
+
+:root[data-theme="dark"] {
+    --color-background: #0E0F12;
+    --color-surface: #16181D;
+    --color-surface-light: #1C1E24;
+    --color-primary: #F2F2F3;
+    --color-secondary: #9A9DA3;
+    --color-disabled: #6B6E75;
+    color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+    --color-background: #F7F8FA;
+    --color-surface: #FFFFFF;
+    --color-surface-light: #EEF0F4;
+    --color-primary: #0E0F12;
+    --color-secondary: #6B7280;
+    --color-disabled: #A1A6B0;
+    color-scheme: light;
 }
 
 html,
@@ -37,14 +62,25 @@ body {
     background: var(--color-background);
 }
 
-html {
-    scroll-behavior: smooth;
-}
-
 body {
     font-family: var(--font-sans);
     color: var(--color-primary);
     -webkit-font-smoothing: antialiased;
+}
+
+/* Lenis owns scroll smoothing; native scroll-behavior stays "auto" so the
+ * two never fight, and reduced-motion users keep plain instant scrolling. */
+html.lenis,
+html.lenis body {
+    height: auto;
+}
+
+.lenis.lenis-smooth {
+    scroll-behavior: auto;
+}
+
+.lenis.lenis-stopped {
+    overflow: hidden;
 }
 
 .skip-link {
@@ -63,9 +99,64 @@ body {
     top: 1rem;
 }
 
+.theme-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: var(--radius-xl);
+    color: var(--color-secondary);
+    transition: background-color 200ms ease-out, color 200ms ease-out;
+}
+
+.theme-toggle:hover {
+    background: var(--color-surface);
+    color: var(--color-primary);
+}
+
+.theme-toggle-icon {
+    display: none;
+}
+
+:root[data-theme="dark"] .theme-toggle-icon--sun,
+:root:not([data-theme]) .theme-toggle-icon--sun {
+    display: block;
+}
+
+:root[data-theme="light"] .theme-toggle-icon--moon {
+    display: block;
+}
+
+/* Scroll reveal: one subtle fade/rise per section, applied by main.ts via
+ * IntersectionObserver. Elements start revealed if JS never runs. */
+[data-reveal] {
+    opacity: 1;
+    transform: none;
+}
+
+[data-reveal].is-hidden {
+    opacity: 0;
+    transform: translateY(24px);
+}
+
+[data-reveal].is-visible {
+    opacity: 1;
+    transform: translateY(0);
+    transition: opacity 600ms ease-out, transform 600ms ease-out;
+}
+
+[data-parallax] {
+    will-change: transform;
+}
+
 @media (prefers-reduced-motion: reduce) {
-    html {
-        scroll-behavior: auto;
+
+    [data-reveal].is-hidden,
+    [data-reveal].is-visible {
+        opacity: 1;
+        transform: none;
+        transition: none;
     }
 
     * {
