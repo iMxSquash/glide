@@ -6,6 +6,9 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), et ce p
 
 ## [Unreleased]
 
+### Changed
+- QR code et PWA packagée pointant vers `app.glide.elwen.dev` au lieu de `glide.elwen.dev`, qui devient la landing page
+
 ## [1.2.0] - 2026-07-08
 
 ### Changed
