@@ -9,6 +9,7 @@
     --color-disabled: #6B6E75;
     --color-accent: #6EE7B7;
     --color-accent-secondary: #A5B4FC;
+    --color-border: rgba(255, 255, 255, 0.08);
 
     /* System stack, not Inter/Manrope: zero font request, zero font-swap layout
      * shift, best LCP/CLS. Deliberate trade-off against the DESIGN_SYSTEM.md
@@ -32,6 +33,7 @@
         --color-primary: #0E0F12;
         --color-secondary: #6B7280;
         --color-disabled: #A1A6B0;
+        --color-border: rgba(14, 15, 18, 0.08);
         color-scheme: light;
     }
 }
@@ -43,6 +45,7 @@
     --color-primary: #F2F2F3;
     --color-secondary: #9A9DA3;
     --color-disabled: #6B6E75;
+    --color-border: rgba(255, 255, 255, 0.08);
     color-scheme: dark;
 }
 
@@ -53,6 +56,7 @@
     --color-primary: #0E0F12;
     --color-secondary: #6B7280;
     --color-disabled: #A1A6B0;
+    --color-border: rgba(14, 15, 18, 0.08);
     color-scheme: light;
 }
 
