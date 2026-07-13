@@ -33,9 +33,9 @@ Décisions actées : landing dans ce repo (nouvelle app Nx `apps/landing`), dép
 
 ### Phase 3 — SEO / GEO
 
-- [ ] `<title>`, meta description, canonical, Open Graph + Twitter Card avec image 1200×630.
-- [ ] JSON-LD `SoftwareApplication` + `FAQPage`, `sitemap.xml`, `robots.txt`, `llms.txt`.
-- [ ] Images WebP avec dimensions réservées, `fetchpriority="high"` sur l'image LCP, fonts WOFF2 avec `font-display: swap`. Cibles : LCP < 2,5 s, INP < 200 ms, CLS < 0,1.
+- [x] `<title>`, meta description, canonical, Open Graph + Twitter Card avec image 1200×630 (générée en SVG puis rasterisée, tokens `DESIGN_SYSTEM.md`).
+- [x] JSON-LD `SoftwareApplication` + `FAQPage` (synchronisé avec les 6 questions de la page), `sitemap.xml`, `robots.txt`, `llms.txt`.
+- [x] Logo du header en WebP redimensionné (19 Ko → ~1 Ko) avec `width`/`height` réservés et `fetchpriority="high"`. Pas de web fonts (Inter/Manrope) : choix assumé pour zéro requête et zéro `CLS` de `font-swap`, documenté dans `style.css` (déviation du `DESIGN_SYSTEM.md` sur ce point précis).
 
 ### Phase 4 — Déploiement Vercel
 
