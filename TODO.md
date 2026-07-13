@@ -39,7 +39,11 @@ Décisions actées : landing dans ce repo (nouvelle app Nx `apps/landing`), dép
 
 ### Phase 4 — Déploiement Vercel
 
-- [ ] Nouveau projet Vercel `glide-landing` sur le même repo GitHub, **Root Directory = `apps/landing`** avec son propre `vercel.json` (le `vercel.json` racine reste dédié au projet PWA, pas de conflit).
+- [x] Projet Vercel `glide-landing` créé (`team_53ANQFiamuZjPr1rNx3a4hkh` / `b2bs-projects-d4663ea5`, id `prj_LcjwAJzD5RmsOrP0boXdtbiYWwtD`) avec `apps/landing/vercel.json` (`buildCommand: npx nx build landing`, `outputDirectory: ../../dist/apps/landing`), committé sur la branche.
+- [ ] **Action manuelle restante (dashboard Vercel, ~1 min)** : `vercel link --cwd apps/landing` n'a pas persisté le Root Directory malgré l'affichage attendu (confirmé par un déploiement preview réel qui échoue sur `npm ci` : seuls les fichiers d'`apps/landing` sont uploadés, pas le lockfile racine). Le CLI n'expose pas de flag pour corriger ça (`vercel project update` n'a pas d'option `--root-directory`) et je n'ai pas de token API pour le faire par l'API REST sans fouiller les credentials locaux, ce que je m'interdis de faire seul. Sur https://vercel.com/b2bs-projects-d4663ea5/glide-landing/settings :
+  1. General → **Root Directory** → `apps/landing`.
+  2. Git → **Connect Git Repository** → `iMxSquash/glide` (pour le déploiement continu, comme le projet `glide` existant).
+- [ ] Une fois fait, je relance un déploiement preview pour vérifier que le build passe, puis on coche cette phase.
 - [ ] Assigner `glide.elwen.dev` à ce projet (après la phase 5, l'ordre compte).
 
 ### Phase 5 — Migration de la PWA vers `app.glide.elwen.dev`
