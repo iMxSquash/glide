@@ -1,0 +1,17 @@
+# Glide
+
+> Glide turns a phone into a wireless trackpad, keyboard and volume remote for a Windows or macOS PC. It runs over WebRTC on the local WiFi network: peer-to-peer, PIN-protected and DTLS-encrypted. No cables, no port forwarding, no certificates to accept.
+
+## Facts
+
+- Platforms: Windows and macOS (PC server), any modern mobile browser (Safari 16.4+, Chrome/Edge 111+, Firefox 128+) for the phone client.
+- Connection: WebRTC data channel negotiated through a signaling server, which only relays a few KB of SDP/ICE metadata and never sees trackpad input or the PIN.
+- Requirement: both devices must be on the same WiFi network (no out-of-LAN connectivity yet).
+- License: GPL-3.0-or-later.
+- Price: free.
+
+## Docs
+
+- [GitHub repository](https://github.com/iMxSquash/glide)
+- [Latest release](https://github.com/iMxSquash/glide/releases/latest)
+- [License](https://github.com/iMxSquash/glide/blob/main/LICENSE)

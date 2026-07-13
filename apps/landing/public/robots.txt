@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://glide.elwen.dev/sitemap.xml

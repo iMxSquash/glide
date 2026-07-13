@@ -10,8 +10,9 @@
     --color-accent: #6EE7B7;
     --color-accent-secondary: #A5B4FC;
 
-    /* System stack for now: Inter/Manrope self-hosted WOFF2 files land in
-     * phase 3 (SEO/perf pass), see TODO.md. */
+    /* System stack, not Inter/Manrope: zero font request, zero font-swap layout
+     * shift, best LCP/CLS. Deliberate trade-off against the DESIGN_SYSTEM.md
+     * typography pick for this static, content-first page. */
     --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
     --font-display: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
 
