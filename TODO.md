@@ -46,10 +46,11 @@ Décisions actées : landing dans ce repo (nouvelle app Nx `apps/landing`), dép
 
 ### Phase 5 — Migration de la PWA vers `app.glide.elwen.dev`
 
-- [ ] Ajouter le domaine `app.glide.elwen.dev` au projet Vercel existant (CNAME côté DNS elwen.dev) : la PWA répond sur les deux URLs pendant la transition.
-- [ ] Changer l'URL dans `apps/server-electron/src/main.ts:24` → `https://app.glide.elwen.dev`, mettre à jour `CHANGELOG.md`, publier une release du serveur Electron.
+- [x] Domaine `app.glide.elwen.dev` ajouté au projet Vercel existant (CNAME chez le registrar de elwen.dev), DNS propagé, HTTPS vérifié (certificat Let's Encrypt valide, TLS 1.3). La PWA répond sur les deux URLs pendant la transition.
+- [x] URL changée dans `apps/server-electron/src/main.ts:24` → `https://app.glide.elwen.dev`, `CHANGELOG.md` mis à jour (commit `f550b72`).
+- [ ] **Publier une release du serveur Electron** (bump de version, build, `dist:win`/`dist:mac`) : pas encore fait, action publique qui attend le feu vert explicite de l'utilisateur.
 - [ ] Une fois la release diffusée, retirer `glide.elwen.dev` du projet PWA et l'assigner au projet landing.
-- [ ] Casse assumée : les PWA déjà installées sur téléphone tomberont sur la landing, il faudra re-scanner le QR. Bandeau "Looking for the app? → app.glide.elwen.dev" sur la landing pour amortir.
+- [ ] Bandeau "Looking for the app? → app.glide.elwen.dev" sur la landing, à ajouter avant ou pendant la bascule finale.
 
 ### Phase 6 — Finitions
 
