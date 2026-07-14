@@ -1,6 +1,6 @@
 {
     "name": "server-electron",
-    "version": "1.2.0",
+    "version": "1.2.1",
     "description": "Glide remote PC control server",
     "author": "Glide",
     "private": true,
