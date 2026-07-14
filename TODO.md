@@ -49,8 +49,9 @@ Décisions actées : landing dans ce repo (nouvelle app Nx `apps/landing`), dép
 - [x] Domaine `app.glide.elwen.dev` ajouté au projet Vercel existant (CNAME chez le registrar de elwen.dev), DNS propagé, HTTPS vérifié (certificat Let's Encrypt valide, TLS 1.3). La PWA répond sur les deux URLs pendant la transition.
 - [x] URL changée dans `apps/server-electron/src/main.ts:24` → `https://app.glide.elwen.dev`, `CHANGELOG.md` mis à jour (commit `f550b72`).
 - [x] Bandeau "Looking for the app? → app.glide.elwen.dev" ajouté sur la landing (commit `ea5216a`).
-- [ ] **Merger `feat/landing-page` dans `main`.**
-- [ ] **Publier une release du serveur Electron** (bump de version, tag `vX.Y.Z`, push du tag qui déclenche `.github/workflows/release.yml`) : décision actée avec l'utilisateur, se fait à la toute fin, après le merge, pas avant.
+- [x] README.md, CHANGELOG.md (`[1.2.1]`), `package.json`/`apps/server-electron/package.json` (version 1.2.1) prêts pour le merge (commit `21d561c`).
+- [ ] **Merger `feat/landing-page` dans `main`** via PR.
+- [ ] **Publier la release** : tag `v1.2.1`, push du tag (déclenche `.github/workflows/release.yml`). Se fait à la toute fin, après le merge, pas avant.
 - [ ] Une fois la release diffusée, retirer `glide.elwen.dev` du projet PWA et l'assigner au projet landing.
 
 ### Phase 6 — Finitions
