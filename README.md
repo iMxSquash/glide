@@ -152,5 +152,6 @@ npm run remove:autostart   # disable
 ## Documentation
 
 - [`RELEASES.md`](RELEASES.md) — how to cut a new GitHub release
+- [`SEO.md`](SEO.md) — SEO/GEO status for the landing page and remaining manual steps
 - [`scripts/README.md`](scripts/README.md) — setup scripts documentation
 - [`TODO.md`](TODO.md) — planned v2 features
