@@ -12,7 +12,7 @@
 [![GitHub release (latest by date including pre-releases)](https://img.shields.io/github/downloads-pre/iMxSquash/glide/latest/total)](https://github.com/iMxSquash/glide/releases/latest)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-blue?style=flat-square)](#quick-start)
 
-[Features](#features) • [Quick start](#quick-start) • [Architecture](#architecture) • [Development](#development) • [Troubleshooting](#troubleshooting)
+[Website](https://glide.elwen.dev) • [Features](#features) • [Quick start](#quick-start) • [Architecture](#architecture) • [Development](#development) • [Troubleshooting](#troubleshooting)
 
 </div>
 
@@ -78,7 +78,8 @@ The PC and the phone each open an *outbound* connection to the signaling server 
 | --------- | ---------------------------------------------------------------------- |
 | Server    | Electron + native WebRTC (hidden `BrowserWindow`) + socket.io-client   |
 | Signaling | Node + Express + socket.io — deployed on Render                        |
-| Client    | React + Vite + PWA — deployed on Vercel                                |
+| Client    | React + Vite + PWA — deployed on Vercel (`app.glide.elwen.dev`)        |
+| Landing   | Vite + vanilla TypeScript + Tailwind CSS + Lenis — deployed on Vercel (`glide.elwen.dev`) |
 | Inputs    | [@nut-tree-fork/nut-js](https://github.com/nut-tree/nut.js)            |
 | UI        | Tailwind CSS                                                           |
 | Build     | Nx monorepo + electron-builder                                         |
@@ -104,6 +105,7 @@ npm install
 npm run dev:server      # Electron server
 npm run dev:client      # Client PWA — http://localhost:4200
 npm run dev:signaling   # Signaling server — http://localhost:4000
+npm run dev:landing     # Landing page — http://localhost:4173
 ```
 
 A dev build of the server points at a local signaling server and PWA by default. A packaged release points at the deployed Render/Vercel instances instead — see `DEFAULT_SIGNALING_URL`/`DEFAULT_PWA_URL` in `apps/server-electron/src/main.ts` (overridable with the `GLIDE_SIGNALING_URL`/`GLIDE_PWA_URL` env vars).
@@ -113,7 +115,8 @@ glide/
 ├── apps/
 │   ├── server-electron/   # Electron server (WebRTC host)
 │   ├── client-pwa/        # React PWA (WebRTC client)
-│   └── signaling/         # WebRTC signaling server (SDP/ICE relay)
+│   ├── signaling/         # WebRTC signaling server (SDP/ICE relay)
+│   └── landing/           # Marketing landing page (glide.elwen.dev)
 ├── scripts/                # Auto-start configuration
 ├── render.yaml              # Render deployment config (signaling)
 └── vercel.json               # Vercel deployment config (PWA)

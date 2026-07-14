@@ -21,7 +21,7 @@ const DEFAULT_SIGNALING_URL = app.isPackaged
   ? "https://glide-signaling.onrender.com"
   : "http://localhost:4000";
 const DEFAULT_PWA_URL = app.isPackaged
-  ? "https://glide.elwen.dev"
+  ? "https://app.glide.elwen.dev"
   : "http://localhost:4200";
 
 const GITHUB_URL = "https://github.com/iMxSquash/glide";

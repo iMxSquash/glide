@@ -6,6 +6,14 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), et ce p
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-07-14
+
+### Added
+- Landing page (`apps/landing`, déployée sur Vercel) : présentation des fonctionnalités, téléchargement, sécurité/vie privée, FAQ, thème clair/sombre, défilement fluide et metadata SEO/GEO (JSON-LD, sitemap, robots.txt, llms.txt)
+
+### Changed
+- QR code et PWA packagée pointant vers `app.glide.elwen.dev` au lieu de `glide.elwen.dev`, qui devient la landing page
+
 ## [1.2.0] - 2026-07-08
 
 ### Changed
@@ -53,7 +61,8 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), et ce p
 - Gestion du certificat auto-signé et du firewall Windows
 - PWA installable sur iPhone/Android
 
-[Unreleased]: https://github.com/iMxSquash/glide/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/iMxSquash/glide/compare/v1.2.1...HEAD
+[1.2.1]: https://github.com/iMxSquash/glide/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/iMxSquash/glide/compare/v1.1.2...v1.2.0
 [1.1.2]: https://github.com/iMxSquash/glide/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/iMxSquash/glide/compare/v1.1.0...v1.1.1

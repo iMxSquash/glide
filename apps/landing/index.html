@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark light" />
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <script>
+        // Applies the effective theme before first paint to avoid a flash of
+        // the wrong theme: the user's stored choice if any, otherwise dark
+        // unless the system explicitly prefers light. main.ts keeps this in
+        // sync afterwards (toggle clicks, live system-preference changes).
+        (function () {
+            var stored = localStorage.getItem("glide-theme");
+            var theme = stored === "dark" || stored === "light"
+                ? stored
+                : (window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+            document.documentElement.setAttribute("data-theme", theme);
+        })();
+    </script>
+
+    <title>Glide: Wireless Trackpad for Your PC From Your Phone</title>
+    <meta name="description"
+        content="Control your Windows or macOS PC from your phone over WiFi: multitouch trackpad, keyboard and volume control, peer-to-peer and encrypted, no app store." />
+    <link rel="canonical" href="https://glide.elwen.dev/" />
+    <meta name="robots" content="index, follow" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Glide" />
+    <meta property="og:url" content="https://glide.elwen.dev/" />
+    <meta property="og:title" content="Glide: Wireless Trackpad for Your PC From Your Phone" />
+    <meta property="og:description"
+        content="Control your Windows or macOS PC from your phone over WiFi: multitouch trackpad, keyboard and volume control, peer-to-peer and encrypted, no app store." />
+    <meta property="og:image" content="https://glide.elwen.dev/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Glide: Wireless Trackpad for Your PC From Your Phone" />
+    <meta name="twitter:description"
+        content="Control your Windows or macOS PC from your phone over WiFi: multitouch trackpad, keyboard and volume control, peer-to-peer and encrypted, no app store." />
+    <meta name="twitter:image" content="https://glide.elwen.dev/og-image.png" />
+
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "name": "Glide",
+        "url": "https://glide.elwen.dev/"
+    }
+    </script>
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "Glide",
+        "url": "https://glide.elwen.dev/",
+        "description": "Control your Windows or macOS PC from your phone over WiFi: multitouch trackpad, keyboard and volume control, peer-to-peer and encrypted, no app store.",
+        "operatingSystem": "Windows, macOS",
+        "applicationCategory": "UtilitiesApplication",
+        "downloadUrl": "https://github.com/iMxSquash/glide/releases/latest",
+        "license": "https://github.com/iMxSquash/glide/blob/main/LICENSE",
+        "author": {
+            "@type": "Organization",
+            "name": "Glide"
+        },
+        "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "USD"
+        }
+    }
+    </script>
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": [
+            {
+                "@type": "Question",
+                "name": "Do I need to install anything on my phone?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "No. Glide's client is a Progressive Web App you open by scanning a QR code shown on your PC. There's nothing to install unless you choose to add it to your home screen."
+                }
+            },
+            {
+                "@type": "Question",
+                "name": "Which platforms are supported?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "The PC server runs on Windows and macOS. The phone works from any modern mobile browser (Safari 16.4+, Chrome/Edge 111+, Firefox 128+)."
+                }
+            },
+            {
+                "@type": "Question",
+                "name": "Is my data safe?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "Yes. Input travels directly between your phone and PC over a PIN-protected, DTLS-encrypted WebRTC connection. The signaling server only relays connection metadata: it never sees your input or your PIN."
+                }
+            },
+            {
+                "@type": "Question",
+                "name": "Does Glide work outside my WiFi network, over the internet?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "Not yet: the current version requires both devices on the same WiFi network. Out-of-LAN connectivity is planned for a future release."
+                }
+            },
+            {
+                "@type": "Question",
+                "name": "Why isn't Glide connecting on a hotel or guest WiFi?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "Some guest and hotel networks enable client isolation, which blocks direct device-to-device connections. Try a personal hotspot or a network without isolation."
+                }
+            },
+            {
+                "@type": "Question",
+                "name": "Is Glide open source?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "Yes, under the GPL-3.0-or-later license. The source is on GitHub."
+                }
+            }
+        ]
+    }
+    </script>
+</head>
+
+<body class="bg-background text-primary">
+    <a href="#main" class="skip-link">Skip to content</a>
+
+    <div class="bg-surface px-4 py-2 text-center text-sm text-secondary">
+        Looking for the app?
+        <a href="https://app.glide.elwen.dev" class="text-accent underline transition-opacity hover:opacity-80">
+            Open Glide &rarr;
+        </a>
+    </div>
+
+    <header class="sticky top-4 z-40 px-4 sm:px-6">
+        <div
+            class="mx-auto flex max-w-5xl items-center justify-between rounded-2xl border border-border bg-surface/80 px-4 py-3 shadow-lg shadow-black/10 backdrop-blur-md sm:px-6">
+            <a href="#main" class="flex items-center gap-2 font-display text-lg font-semibold">
+                <img src="/logo.webp" alt="" width="28" height="28" fetchpriority="high" class="h-7 w-7 shrink-0" />
+                Glide
+            </a>
+            <nav aria-label="Main">
+                <ul class="hidden items-center gap-8 text-sm text-secondary sm:flex">
+                    <li><a href="#features" class="transition-colors hover:text-primary">Features</a></li>
+                    <li><a href="#how-it-works" class="transition-colors hover:text-primary">How it works</a></li>
+                    <li><a href="#faq" class="transition-colors hover:text-primary">FAQ</a></li>
+                </ul>
+            </nav>
+            <div class="flex items-center gap-3">
+                <button type="button" data-theme-toggle class="theme-toggle cursor-pointer" aria-pressed="false">
+                    <span class="theme-toggle-icon theme-toggle-icon--sun">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+                            stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <circle cx="12" cy="12" r="4" />
+                            <path
+                                d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+                        </svg>
+                    </span>
+                    <span class="theme-toggle-icon theme-toggle-icon--moon">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+                            stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z" />
+                        </svg>
+                    </span>
+                </button>
+                <a href="#download"
+                    class="rounded-xl bg-accent px-4 py-2 text-sm font-medium text-background transition-transform hover:scale-[1.02] hover:opacity-90">
+                    Download
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <main id="main">
+        <section id="hero" aria-labelledby="hero-heading" class="relative overflow-hidden py-20 text-center sm:py-28">
+            <div class="pointer-events-none absolute inset-0 -z-10 flex justify-center" aria-hidden="true">
+                <div data-parallax="0.12"
+                    class="-mt-16 h-72 w-72 rounded-full bg-accent opacity-10 blur-3xl sm:h-96 sm:w-96"></div>
+            </div>
+            <div class="mx-auto max-w-3xl px-6">
+                <h1 id="hero-heading" class="font-display text-4xl font-semibold sm:text-5xl">
+                    Turn your phone into a wireless trackpad for your PC
+                </h1>
+                <p class="mx-auto mt-6 max-w-xl text-lg text-secondary">
+                    No cables, no port forwarding, no certificates to accept. Scan a QR code and your phone becomes a
+                    multitouch trackpad, keyboard and volume remote, over the same WiFi network.
+                </p>
+                <div class="mt-8 flex flex-wrap items-center justify-center gap-4">
+                    <a href="#download"
+                        class="rounded-xl bg-accent px-6 py-3 font-medium text-background transition-transform hover:scale-[1.02] hover:opacity-90">
+                        Download for free
+                    </a>
+                    <a href="https://github.com/iMxSquash/glide"
+                        class="text-sm text-secondary transition-colors hover:text-primary">
+                        View on GitHub &rarr;
+                    </a>
+                </div>
+            </div>
+        </section>
+
+        <section id="features" aria-labelledby="features-heading" data-reveal class="mx-auto max-w-5xl px-6 py-16">
+            <h2 id="features-heading" class="font-display text-2xl font-semibold">Features</h2>
+            <dl class="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                <div class="rounded-2xl bg-surface p-6 transition-transform hover:scale-[1.02]">
+                    <dt class="font-medium">Multitouch trackpad</dt>
+                    <dd class="mt-2 text-sm text-secondary">
+                        1-finger move and tap for cursor and click, 2-finger tap for right-click, 2-finger drag to
+                        scroll, double-tap-and-hold to drag.
+                    </dd>
+                </div>
+                <div class="rounded-2xl bg-surface p-6 transition-transform hover:scale-[1.02]">
+                    <dt class="font-medium">Volume control</dt>
+                    <dd class="mt-2 text-sm text-secondary">
+                        An on-screen slider and mute button, kept in sync with your PC's actual system volume.
+                    </dd>
+                </div>
+                <div class="rounded-2xl bg-surface p-6 transition-transform hover:scale-[1.02]">
+                    <dt class="font-medium">Remote keyboard</dt>
+                    <dd class="mt-2 text-sm text-secondary">
+                        Type directly on your PC from your phone, no need to walk back to the keyboard.
+                    </dd>
+                </div>
+                <div class="rounded-2xl bg-surface p-6 transition-transform hover:scale-[1.02]">
+                    <dt class="font-medium">Installable PWA</dt>
+                    <dd class="mt-2 text-sm text-secondary">
+                        Add it to your home screen for a native-app feel: no app store needed.
+                    </dd>
+                </div>
+                <div class="rounded-2xl bg-surface p-6 transition-transform hover:scale-[1.02]">
+                    <dt class="font-medium">Peer-to-peer &amp; encrypted</dt>
+                    <dd class="mt-2 text-sm text-secondary">
+                        PIN-protected, DTLS-encrypted WebRTC connection. The signaling server never sees your input
+                        or your PIN.
+                    </dd>
+                </div>
+                <div class="rounded-2xl bg-surface p-6 transition-transform hover:scale-[1.02]">
+                    <dt class="font-medium">Zero config</dt>
+                    <dd class="mt-2 text-sm text-secondary">
+                        Scan a QR code, enter the PIN, done. Auto-reconnects after a WiFi drop or screen lock.
+                    </dd>
+                </div>
+            </dl>
+        </section>
+
+        <section id="how-it-works" aria-labelledby="how-it-works-heading" data-reveal
+            class="mx-auto max-w-5xl px-6 py-16">
+            <h2 id="how-it-works-heading" class="font-display text-2xl font-semibold">How it works</h2>
+            <ol class="mt-8 grid gap-6 sm:grid-cols-3">
+                <li class="rounded-2xl bg-surface p-6 transition-transform hover:scale-[1.02]">
+                    <span class="text-sm text-accent">Step 1</span>
+                    <p class="mt-2 font-medium">Install Glide on your PC</p>
+                    <p class="mt-1 text-sm text-secondary">Download and run the installer for Windows or macOS.</p>
+                </li>
+                <li class="rounded-2xl bg-surface p-6 transition-transform hover:scale-[1.02]">
+                    <span class="text-sm text-accent">Step 2</span>
+                    <p class="mt-2 font-medium">Scan the QR code</p>
+                    <p class="mt-1 text-sm text-secondary">
+                        Point your phone's camera at the code shown in the Glide window: it opens the PWA.
+                    </p>
+                </li>
+                <li class="rounded-2xl bg-surface p-6 transition-transform hover:scale-[1.02]">
+                    <span class="text-sm text-accent">Step 3</span>
+                    <p class="mt-2 font-medium">Enter the PIN and go</p>
+                    <p class="mt-1 text-sm text-secondary">
+                        Type the PIN shown on your PC and start using the trackpad, keyboard and volume slider.
+                    </p>
+                </li>
+            </ol>
+            <p class="mt-6 max-w-2xl text-sm text-secondary">
+                Your phone and PC only use the signaling server to exchange a few KB of connection metadata (SDP/ICE).
+                Once connected, they talk directly to each other over a WebRTC data channel on your local network.
+                Your trackpad input never travels over the internet.
+            </p>
+        </section>
+
+        <section id="download" aria-labelledby="download-heading" data-reveal class="mx-auto max-w-5xl px-6 py-16">
+            <h2 id="download-heading" class="font-display text-2xl font-semibold">Download</h2>
+            <p class="mt-2 text-sm text-secondary">
+                <span data-version>Latest release</span> &middot; free &middot; open source
+            </p>
+            <div class="mt-6 flex flex-wrap gap-4">
+                <a data-download-windows href="https://github.com/iMxSquash/glide/releases/latest"
+                    class="rounded-xl bg-accent px-6 py-3 font-medium text-background transition-transform hover:scale-[1.02] hover:opacity-90">
+                    Download for Windows
+                </a>
+                <a data-download-macos href="https://github.com/iMxSquash/glide/releases/latest"
+                    class="rounded-xl bg-surface px-6 py-3 font-medium transition-transform hover:scale-[1.02] hover:bg-surface-light">
+                    Download for macOS
+                </a>
+            </div>
+            <p class="mt-6 max-w-2xl text-sm text-secondary">
+                Requires a PC running Windows or macOS, and a phone with a recent browser (Safari 16.4+, Chrome/Edge
+                111+, Firefox 128+) on the same WiFi network. Prefer building it yourself? See the
+                <a href="https://github.com/iMxSquash/glide#build-from-source"
+                    class="text-primary underline transition-opacity hover:opacity-80">
+                    build from source
+                </a> instructions.
+            </p>
+        </section>
+
+        <section id="privacy" aria-labelledby="privacy-heading" data-reveal class="mx-auto max-w-5xl px-6 py-16">
+            <h2 id="privacy-heading" class="font-display text-2xl font-semibold">Privacy &amp; security</h2>
+            <ul class="mt-8 grid gap-6 sm:grid-cols-3">
+                <li class="rounded-2xl bg-surface p-6 transition-transform hover:scale-[1.02]">
+                    <p class="font-medium">Peer-to-peer by design</p>
+                    <p class="mt-2 text-sm text-secondary">
+                        Trackpad input travels directly between your phone and your PC on your local network.
+                    </p>
+                </li>
+                <li class="rounded-2xl bg-surface p-6 transition-transform hover:scale-[1.02]">
+                    <p class="font-medium">PIN-protected &amp; encrypted</p>
+                    <p class="mt-2 text-sm text-secondary">
+                        Every connection requires the PIN shown on your PC and is encrypted with DTLS.
+                    </p>
+                </li>
+                <li class="rounded-2xl bg-surface p-6 transition-transform hover:scale-[1.02]">
+                    <p class="font-medium">The signaling server is blind</p>
+                    <p class="mt-2 text-sm text-secondary">
+                        It only relays a few KB of connection metadata: it never sees your input or your PIN.
+                    </p>
+                </li>
+            </ul>
+        </section>
+
+        <section id="faq" aria-labelledby="faq-heading" data-reveal class="mx-auto max-w-5xl px-6 py-16">
+            <h2 id="faq-heading" class="font-display text-2xl font-semibold">Frequently asked questions</h2>
+            <div class="mt-8 space-y-3">
+                <details class="rounded-2xl bg-surface p-6">
+                    <summary class="cursor-pointer font-medium transition-colors hover:text-accent">Do I need to install anything on my phone?</summary>
+                    <p class="mt-3 text-sm text-secondary">
+                        No. Glide's client is a Progressive Web App you open by scanning a QR code shown on your PC.
+                        There's nothing to install unless you choose to add it to your home screen.
+                    </p>
+                </details>
+                <details class="rounded-2xl bg-surface p-6">
+                    <summary class="cursor-pointer font-medium transition-colors hover:text-accent">Which platforms are supported?</summary>
+                    <p class="mt-3 text-sm text-secondary">
+                        The PC server runs on Windows and macOS. The phone works from any modern mobile browser
+                        (Safari 16.4+, Chrome/Edge 111+, Firefox 128+).
+                    </p>
+                </details>
+                <details class="rounded-2xl bg-surface p-6">
+                    <summary class="cursor-pointer font-medium transition-colors hover:text-accent">Is my data safe?</summary>
+                    <p class="mt-3 text-sm text-secondary">
+                        Yes. Input travels directly between your phone and PC over a PIN-protected, DTLS-encrypted
+                        WebRTC connection. The signaling server only relays connection metadata: it never sees
+                        your input or your PIN.
+                    </p>
+                </details>
+                <details class="rounded-2xl bg-surface p-6">
+                    <summary class="cursor-pointer font-medium transition-colors hover:text-accent">
+                        Does Glide work outside my WiFi network, over the internet?
+                    </summary>
+                    <p class="mt-3 text-sm text-secondary">
+                        Not yet: the current version requires both devices on the same WiFi network.
+                        Out-of-LAN connectivity is planned for a future release.
+                    </p>
+                </details>
+                <details class="rounded-2xl bg-surface p-6">
+                    <summary class="cursor-pointer font-medium transition-colors hover:text-accent">
+                        Why isn't Glide connecting on a hotel or guest WiFi?
+                    </summary>
+                    <p class="mt-3 text-sm text-secondary">
+                        Some guest and hotel networks enable client isolation, which blocks direct device-to-device
+                        connections. Try a personal hotspot or a network without isolation.
+                    </p>
+                </details>
+                <details class="rounded-2xl bg-surface p-6">
+                    <summary class="cursor-pointer font-medium transition-colors hover:text-accent">Is Glide open source?</summary>
+                    <p class="mt-3 text-sm text-secondary">
+                        Yes, under the GPL-3.0-or-later license. The source is
+                        <a href="https://github.com/iMxSquash/glide" class="text-primary underline">on GitHub</a>.
+                    </p>
+                </details>
+            </div>
+        </section>
+    </main>
+
+    <footer class="border-t border-white/5">
+        <div class="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4 px-6 py-8 text-sm text-secondary">
+            <p>&copy; <span data-year>2026</span> Glide (GPL-3.0-or-later)</p>
+            <a href="https://github.com/iMxSquash/glide" class="hover:text-primary">GitHub</a>
+        </div>
+    </footer>
+
+    <script type="module" src="/src/main.ts"></script>
+</body>
+
+</html>
