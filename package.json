@@ -34,16 +34,16 @@
     },
     "devDependencies": {
         "@eslint/js": "^10.0.1",
-        "@nx/js": "^23.0.1",
-        "@nx/react": "^23.0.1",
+        "@nx/js": "^23.1.0",
+        "@nx/react": "^23.1.0",
         "@nx/vite": "^23.0.1",
-        "@nx/workspace": "^23.0.1",
-        "eslint": "^10.6.0",
+        "@nx/workspace": "^23.1.0",
+        "eslint": "^10.7.0",
         "eslint-plugin-react-hooks": "^7.1.1",
         "eslint-plugin-react-refresh": "^0.5.3",
         "globals": "^17.7.0",
         "nx": "^23.0.1",
         "typescript": "^6.0.3",
-        "typescript-eslint": "^8.63.0"
+        "typescript-eslint": "^8.65.0"
     }
 }
